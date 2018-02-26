@@ -1,0 +1,48 @@
+
+    def dragEnterEvent(self, e):
+        listURL = e.mimeData().urls()
+        if len(listURL) > 0:
+            logging.debug(listURL[0].toLocalFile()), QFile.exists(listURL[0].toLocalFile())
+            e.accept()
+            e.acceptProposedAction()
+
+    def dropEvent(self, e):
+        ''' 由於 treeview 不會進行 dropMimeData() slot 因此無法正確的回傳作用的 item 補在這個事件內
+        :param e: QDropEvent
+        :return:
+        '''
+        # 似乎有 BUG改成手動處理 Copy -> Paste -> Delete
+        e.setDropAction(Qt.MoveAction)
+        drag = QDrag(self)
+        drag.setMimeData(e.mimeData())
+        targetIdx = self.indexAt(e.pos())
+        #print targetItem, 'row -> ', targetItem.row(), 'col -> ', targetItem.column()
+        try:
+            logging.debug(unicode(self.model().mimeData([targetIdx]).urls()[0].toString()))
+            destDIR = QDir(self.model().mimeData([targetIdx]).urls()[0].toLocalFile())
+        except:
+            #目前的工作目錄是空目錄
+            logging.debug(unicode(self.parent.location))
+            destDIR = QDir(self.parent.location)
+
+        if e.mimeData().hasUrls() & QFile.exists(e.mimeData().urls()[0].toLocalFile()):
+            logging.debug(e.mimeData().urls())
+            e.accept()
+
+            for item in e.mimeData().urls():
+                sourceQFile = QFile(QUrl(item).toLocalFile())
+                sourceQFileInfo = QFileInfo(sourceQFile)
+
+                if sourceQFileInfo.isFile():
+                    #需要補上檢查是否有同樣檔名再確認是否覆蓋
+                    #shutil.move( unicode(QDir(sourceQFile.fileName()).absolutePath()), unicode(destDIR.absolutePath()))
+                    if QFile.exists(destDIR.absoluteFilePath(sourceQFileInfo.fileName())):
+                        sourceQFile.copy(destDIR.absoluteFilePath(sourceQFileInfo.completeBaseName().append(QString('_Copy.'))\
+                                                                  .append(sourceQFileInfo.suffix())))
+                    else:
+                        sourceQFile.copy(destDIR.absoluteFilePath(sourceQFileInfo.fileName()))
+
+                if sourceQFileInfo.isDir():
+                    shutil.move(unicode(QDir(sourceQFile.fileName()).absolutePath()), unicode(destDIR.absolutePath()))
+                    self.model().refresh()
+
