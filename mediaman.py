@@ -2,7 +2,7 @@
 import sys, os, re, threading, logging, requests, tempfile, pickle, subprocess
 from urllib3.exceptions import InsecureRequestWarning
 import catalogman
-
+import random, string
 from utils import keyword_extract
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -37,7 +37,13 @@ def removeDir(dirName):
     return result
 
 
-def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel):
+def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel, signalMsgboxShow):
+    '''
+    搜尋 https://www.arzon.jp 並依據結果 直接更改目錄名稱 或 顯示結果
+    :param keywords:
+    :param file_model:
+    :return:
+    '''
     #urllib3.disable_warnings()
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
     for job in keywords:
@@ -78,9 +84,19 @@ def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel):
 
                                     print(actress_name, keyword, fullnewname)
 
-                                    QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(),
-                                        file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + fullnewname)
+                                    # 檢查是否有重複目錄
+                                    dest_folder = file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + fullnewname
 
+                                    if QtCore.QDir(dest_folder).exists():
+
+                                        #QtWidgets.QMessageBox('重複目錄名稱-'+dest_folder)
+                                        #signalMsgboxShow.emit('重複目錄名稱 - '+dest_folder)
+                                        appendixStr=''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(4))
+                                        QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(), dest_folder+'-[重複]'+appendixStr)
+                                        QtGui.QDesktopServices.openUrl(QtCore.QUrl().fromLocalFile(dest_folder))
+
+                                    else:
+                                        QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(), dest_folder)
 
                                 if temp[0].text.strip(' \t\n\r') == 'AV女優：':
                                     if not temp[1].text.strip(' \t\n\r'):
@@ -99,7 +115,7 @@ def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel):
                         continue
 
                 os.close(tmp[0])
-                if len(video_item) > 1 or actress_name == '素人' or len(actress_name.splitlines()) > 1: # 多於一位主演
+                if len(video_item) > 1 or actress_name == '素人' or len(actress_name.splitlines()) > 1:  # 多於一位主演
                     QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(tmp[1]))
             else:
                 QtGui.QDesktopServices.openUrl(
@@ -341,6 +357,8 @@ class myFileListWidget(QtWidgets.QWidget):
     revItemSrc = None
     settings = QtCore.QSettings("candy", "brt")                # Registry Current_USER\Software\Candy\brt
 
+    signalMsgboxShow = QtCore.pyqtSignal(str)
+
     def __init__(self, app):
         super().__init__()
         self.app = app
@@ -375,6 +393,8 @@ class myFileListWidget(QtWidgets.QWidget):
                     background-color: #666;
                 }
                 
+                QMessageBox { messagebox-text-interaction-flags: 5; }
+                
                 QPushButton, QLineEdit {
                 font-size:16px;
                 border: 2px solid #8f8f91; border-width:1px; 
@@ -388,6 +408,9 @@ class myFileListWidget(QtWidgets.QWidget):
                 }
                 """
         self.setStyleSheet(style)
+
+        self.msgbox = QtWidgets.QMessageBox(self)
+        self.msgbox.hide()
 
         treeview = treeviewFolder(self)
         treeview.setModel(self.myModel)
@@ -486,9 +509,16 @@ class myFileListWidget(QtWidgets.QWidget):
         fileinfo.doubleClicked.connect(lambda index: self.fnTableWidgetDbClick(index))
         fileinfo.clicked.connect(lambda index: self.fnShowFileBaseName(index, nameline))
 
+        self.signalMsgboxShow.connect(lambda msg: self.fnShowMsg(msg), QtCore.Qt.QueuedConnection)
+
         self.fnManualLocation()
         self.win = {}
         #self.win['searching'] = catalogman.searchWidget(self)
+
+    @QtCore.pyqtSlot(str)
+    def fnShowMsg(self, msg):
+        self.msgbox.setText(msg)
+        self.msgbox.show()
 
     def fnShowDirectoryinFinder(self, index):
         QtGui.QDesktopServices.openUrl(QtCore.QUrl().fromLocalFile(self.myModel.filePath(index)))
@@ -607,7 +637,9 @@ class myFileListWidget(QtWidgets.QWidget):
                 for idx in self.fileinfo.selectedIndexes():
                     keywords.append([self.fileinfo.model().fileName(idx), idx])
 
-            threading.Thread(target=fnWebSearching, kwargs={"keywords": keywords, "file_model": file_model}).start()
+            threading.Thread(target=fnWebSearching, kwargs={"keywords": keywords,
+                                                            "file_model": file_model,
+                                                            "signalMsgboxShow": self.signalMsgboxShow}).start()
 
         if keyevent.key() == Qt.Key_Delete:
             self.revItemSrc = self.focusWidget()
@@ -732,7 +764,6 @@ class myFileListWidget(QtWidgets.QWidget):
 
 
 def main():
-    print("TEST")
     logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
     app = QtWidgets.QApplication(sys.argv)

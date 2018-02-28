@@ -17,7 +17,7 @@ def keyword_extract(strOldName):
 
     newFileName = re.sub(r'\[.*?\]', '_', newFileName)  # 移除方括號部份 換成 _
 
-    print(newFileName)
+    print('newFileName=', newFileName)
 
     m = re.compile(r'[0-9a-zA-Z]+[_\-][0-9a-zA-Z]+[_\-]*[0-9a-zA-Z]*').search(newFileName)
     if m:
@@ -27,8 +27,11 @@ def keyword_extract(strOldName):
         if m.start() > 0:  # 開頭有其他文字
             strNewName = media_id + '_' + strOldName[0:m.start()]
 
-        if m.end() < len(strOldName):  # 結尾有其他文字
-            strNewName = media_id + '_' + strOldName[m.end():len(strOldName)]
+        if m.end() < len(strOldName):  # 結尾或開頭有其他文字
+            strNewName = media_id + '_' + re.sub(m.group(0), '', strOldName)
+            # strNewName = media_id + '_' + strOldName[m.end():len(strOldName)]
+
+        #print('strNewName=', strNewName)
 
     else:   # 可能使用了沒有底線或dash的表示方式 改採保守處理  假設為 alpha-num
         m = re.compile(r'[a-zA-Z]+[0-9a-zA-Z]+').search(strOldName)
