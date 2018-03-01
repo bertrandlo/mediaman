@@ -9,7 +9,7 @@ def keyword_extract(strOldName):
     '''
 
     ext_words = ('HD', 'FHD', 'SD', '1080P')
-    exclude_words = ('\[Thz.la\]', 'javcn\.net')        # 需要寫成 regular pattern 格式
+    exclude_words = ('\[Thz.la\]', 'javcn\.net', 'CMP4')        # 需要寫成 regular pattern 格式
     newFileName = strOldName
 
     for item in exclude_words:                          # 移除 exclude_words
@@ -19,9 +19,10 @@ def keyword_extract(strOldName):
 
     print('newFileName=', newFileName)
 
-    m = re.compile(r'[0-9a-zA-Z]+[_\-][0-9a-zA-Z]+[_\-]*[0-9a-zA-Z]*').search(newFileName)
+    m = re.compile(r'[0-9a-zA-Z]+[_\-]?[0-9a-zA-Z]+[_\-]*[0-9a-zA-Z]*').search(newFileName)
     if m:
         media_id = m.group(0).upper()
+        print('media_id=', media_id)
         strNewName = m.group(0).upper()
 
         if m.start() > 0:  # 開頭有其他文字
