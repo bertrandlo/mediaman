@@ -459,7 +459,7 @@ class myFileListWidget(QtWidgets.QWidget):
         labelMsg.setStyleSheet("font-size: 14px;")
         self.labelMsg = labelMsg
 
-        btnSearch = QtWidgets.QPushButton("Search")
+        btnSearch = QtWidgets.QPushButton("Database")
         btnSearch.setStyleSheet(style)
         btnWebService = QtWidgets.QPushButton("Web")
         btnWebService.setStyleSheet(style)
@@ -622,7 +622,7 @@ class myFileListWidget(QtWidgets.QWidget):
                 for item in clipboard.mimeData().urls():
                     logging.debug(item)
 
-        if keyevent.key() == Qt.Key_F4:  #網頁搜尋 番號  + "演出" <- 需要 urlencoding
+        if keyevent.key() == Qt.Key_F4:  # F4  網頁搜尋 番號  + "演出" <- 需要 urlencoding
 
             keywords = []
 

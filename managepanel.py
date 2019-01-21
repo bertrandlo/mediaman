@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# 處理所有硬碟影片檔案索引
+# 規劃設計了一個 CoreMachine 類別處理所有的工作 UI Singal Connect 交待工作
 import os
 import sys
 import logging
@@ -13,7 +15,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 import tree
 
-db_location = 'C://Users//brt//Desktop//files.db'
+db_location = 'files.db'
 disk_set = []
 
 def GetHumanReadable(size, precision=1):
@@ -49,7 +51,7 @@ def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, l
         for filename in files:
 
             try:
-                file_size = os.stat(os.path.join(root, filename)).st_size # in bytes
+                file_size = os.stat(os.path.join(root, filename)).st_size    # in bytes
             except FileNotFoundError:
                 continue
             except OSError as e:  # 有問題的檔名或目錄名稱 --> 不處理
@@ -69,6 +71,7 @@ def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, l
 
     space_available = GetHumanReadable(QtCore.QStorageInfo(scan_path).bytesAvailable()) + '/' + \
         GetHumanReadable(QtCore.QStorageInfo(scan_path).bytesTotal())
+    print(label + " - Available Space = " + space_available)
     check_date = datetime.datetime.now().strftime("%Y%m%d %H%M%S")
     sql_cmd_queue.put(("UPDATE disk SET space_available = ? , check_date = ? WHERE disk_id = ?", copy.copy((space_available, check_date, disk_id))))
 
@@ -98,7 +101,7 @@ class SQLExecuter(QtCore.QObject):
             self.flag_exit = True
 
     def wait(self):
-        conn = sqlite3.connect('C://Users//brt//Desktop//files.db')
+        conn = sqlite3.connect(db_location)
         cur = conn.cursor()
         count = 0
 
@@ -447,7 +450,7 @@ class CoreMachine(QtCore.QObject):
         QtWidgets.QApplication.processEvents()
         thread_sqlcmdexecutor.join()
 
-        conn = sqlite3.connect('C://Users//brt//Desktop//files.db')
+        conn = sqlite3.connect(db_location)
         cur = conn.cursor()
         cur.execute('VACUUM files')
         conn.commit()
@@ -469,7 +472,7 @@ class searchWidget(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QApplication):
         super().__init__()
         self.settings = QtCore.QSettings("candy", "brt")
-        self.conn = sqlite3.connect('C://Users//brt//Desktop//files.db')
+        self.conn = sqlite3.connect(db_location)
 
         #self.treemodel = QtGui.QStandardItemModel()
         self.treemodel = tree.TreeModel(conn=self.conn)
