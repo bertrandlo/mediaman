@@ -10,13 +10,36 @@ import itertools
 import threading
 import queue
 import time
+import json
 import copy
-from PyQt5 import QtCore, QtGui, QtWidgets
-
+from PyQt5 import QtCore, QtGui, QtWidgets, QtWebEngineWidgets
+from PyQt5.QtCore import QUrl
 import tree
 
 db_location = 'files.db'
 disk_set = []
+
+cssStyle = """
+        QWidget {
+            font-size:16px;
+            color: #aaa;
+            border: 2px solid; 
+            border-width:1px; 
+            border-style: solid;
+            background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #222, stop: 1 #333);
+            min-height:24px; 
+        }
+        QHeaderView::section {
+            background-color: #000000;
+        }
+        QTableView {
+            border-radius:8px;
+            background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #222, stop: 1 #333);
+        }
+        QTableView::item:selected {
+            background-color: #555555;
+        }
+        """
 
 def GetHumanReadable(size, precision=1):
     suffixes = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -25,7 +48,7 @@ def GetHumanReadable(size, precision=1):
         while size > 1024 and suffixIndex < 4:
             suffixIndex += 1 #increment the index of the suffix
             size = size/1024.0 #apply the division
-        return "%.*f%s" % (precision,size,suffixes[suffixIndex])
+        return "%.*f%s" % (precision, size, suffixes[suffixIndex])
     else:
         return 'No File Size Data'
 
@@ -69,9 +92,8 @@ def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, l
     sql_cmd_queue.put(("COMMIT",), block=False)
     print("Files Count = " + str(count))
 
-    space_available = GetHumanReadable(QtCore.QStorageInfo(scan_path).bytesAvailable()) + '/' + \
-        GetHumanReadable(QtCore.QStorageInfo(scan_path).bytesTotal())
-    print(label + " - Available Space = " + space_available)
+    space_available = json.dumps([QtCore.QStorageInfo(scan_path).bytesAvailable(), QtCore.QStorageInfo(scan_path).bytesTotal()])
+    print(label + ' - SPACE - ' + space_available)
     check_date = datetime.datetime.now().strftime("%Y%m%d %H%M%S")
     sql_cmd_queue.put(("UPDATE disk SET space_available = ? , check_date = ? WHERE disk_id = ?", copy.copy((space_available, check_date, disk_id))))
 
@@ -121,11 +143,12 @@ class SQLExecuter(QtCore.QObject):
         conn.close()
 
 
-class TblWidget(QtWidgets.QTableWidget):
+class TblWidget(QtWidgets.QTableWidget):    # 視窗右側磁碟清單
 
     signal_Update_LabelMsg = None
     signal_LoadSearchPath = QtCore.pyqtSignal()
     signal_Update_Disk_Files = None
+    disks_info={}
 
     def __init__(self, row, col):
         super().__init__(row, col)
@@ -181,6 +204,7 @@ class TblWidget(QtWidgets.QTableWidget):
             self.insertRow(self.rowCount())
             #print(row)
             try:
+                self.disks_info[row[1]] = [row[2], row[3], row[4]]    # [path, volume space, check date]
                 self.setItem(idx, 2, QtWidgets.QTableWidgetItem(str(row[0]), 0))    # disk_id (integral)
                 self.setItem(idx, 0, QtWidgets.QTableWidgetItem(row[1], 0))         # label
                 self.setItem(idx, 1, QtWidgets.QTableWidgetItem(row[2], 0))         # path
@@ -270,6 +294,7 @@ class TblWidget(QtWidgets.QTableWidget):
 
 class MessageLabel(QtWidgets.QLabel):
     signal_MessageLabel_Busy = QtCore.pyqtSignal(bool)
+
     def __init__(self):
         super().__init__()
         self.timer = QtCore.QTimer()
@@ -292,32 +317,10 @@ class MessageLabel(QtWidgets.QLabel):
 
 
 class Ui_Form(QtCore.QObject):
+
     def setupUi(self, Form):
         Form.setObjectName("Form")
         Form.setMinimumSize(600, 400)
-
-
-        cssStyle = """
-                QWidget {
-                    font-size:16px;
-                    color: #aaa;
-                    border: 2px solid; 
-                    border-width:1px; 
-                    border-style: solid;
-                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #222, stop: 1 #333);
-                    min-height:24px; 
-                }
-                QHeaderView::section {
-                    background-color: #000000;
-                }
-                QTableView {
-                    border-radius:8px;
-                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #222, stop: 1 #333);
-                }
-                QTableView::item:selected {
-                    background-color: #555555;
-                }
-                """
 
         path = os.path.join(os.path.dirname(sys.modules[__name__].__file__), 'Files-icon.png')
 
@@ -332,6 +335,7 @@ class Ui_Form(QtCore.QObject):
         self.btnSearch = QtWidgets.QPushButton()
         self.btnSearch.setObjectName("btnSearch")
         self.btnSearch.setStyleSheet(cssStyle)
+        self.btnSearch.setText("搜尋")
 
         self.strKeyWord = QtWidgets.QLineEdit()
         self.strKeyWord.setObjectName("revPath")
@@ -340,6 +344,13 @@ class Ui_Form(QtCore.QObject):
         self.btnSave = QtWidgets.QPushButton()
         self.btnSave.setObjectName("btnSave")
         self.btnSave.setStyleSheet(cssStyle)
+        self.btnSave.setText("更新")
+
+        self.btnDisksInfo = QtWidgets.QPushButton()
+        self.btnDisksInfo.setObjectName("btnDisksInfo")
+        self.btnDisksInfo.setStyleSheet(cssStyle)
+        self.btnDisksInfo.setText("硬碟")
+
         self.treeView = tree.TreeView()
         self.treeView.setObjectName("treeView")
         self.treeView.setStyleSheet(cssStyle)
@@ -358,17 +369,16 @@ class Ui_Form(QtCore.QObject):
         self.labelMsg = MessageLabel()
         self.labelMsg.setStyleSheet(cssStyle)
 
-        self.gridLayout.addWidget(self.strKeyWord,  0,  0, 1, 16)
-        self.gridLayout.addWidget(self.btnSearch,   0, 16, 1, 2)
-        self.gridLayout.addWidget(self.btnSave,     0, 18, 1, 2)
+        self.gridLayout.addWidget(self.strKeyWord,  0,  0, 1, 14)
+        self.gridLayout.addWidget(self.btnSearch,   0, 14, 1, 2)
+        self.gridLayout.addWidget(self.btnSave,     0, 16, 1, 2)
+        self.gridLayout.addWidget(self.btnDisksInfo, 0, 18, 1, 2)
         self.gridLayout.addWidget(self.treeView,    1,  0, 28, 15)
         self.gridLayout.addWidget(self.tableWidget, 1, 15, 29, 5)
         self.gridLayout.addWidget(self.labelMsg,    29,  0, 1, 15)
 
         self.gridLayoutWidget.setLayout(self.gridLayout)
         Form.setWindowTitle("目錄檔案資料庫")
-        self.btnSearch.setText("搜尋")
-        self.btnSave.setText("更新")
 
         self.strKeyWord.returnPressed.connect(self.btnSearch.click)
 
@@ -474,18 +484,18 @@ class searchWidget(QtWidgets.QWidget):
         self.settings = QtCore.QSettings("candy", "brt")
         self.conn = sqlite3.connect(db_location)
 
-        #self.treemodel = QtGui.QStandardItemModel()
+        # self.treemodel = QtGui.QStandardItemModel()
         self.treemodel = tree.TreeModel(conn=self.conn)
 
         self.parent = parent
         self.ui = Ui_Form()
         self.ui.setupUi(self)
-        #self.settings = parent.settings
+        # self.settings = parent.settings
         self.ui.treeView.setModel(self.treemodel)
         self.ui.treeView.signal_Searching = self.signal_Searching
         self.threadPool = []
 
-        #載入預設搜尋點
+        # 載入預設搜尋點
         self.ui.tableWidget.conn = self.conn
         self.ui.tableWidget.fnLoadSearchPath()
 
@@ -508,13 +518,82 @@ class searchWidget(QtWidgets.QWidget):
         self.ui.tableWidget.signal_Update_Disk_Files = self.cm1.signal_Update_Disk_Files
         self.ui.tableWidget.signal_connect()
 
+        self.qwebview = QtWebEngineWidgets.QWebEngineView()
+
         self.signal_Update_LabelMsg.connect(self.update_labelmsg)
         self.signal_Searching.connect(self.fnSearching)
         self.ui.btnSave.clicked.connect(self.fnUpdating)
         self.ui.btnSearch.clicked.connect(self.fnSearching)
+        self.ui.btnDisksInfo.clicked.connect(self.fnTest)
         self.ui.treeView.doubleClicked.connect(self.treedbclick)
         self.ui.treeView.signal_item_clicked.connect(lambda idx: self.update_labelmsg(
             GetHumanReadable(self.treemodel.itemFromIndex(idx).file_size)))
+
+    @QtCore.pyqtSlot()
+    def fnTest(self):
+        self.qwebview.setWindowTitle('磁碟空間統計資料')
+        self.qwebview.setStyleSheet(cssStyle)
+        data = [['Disk', 'Free', 'Total']]
+        for disk in self.fnDisksList():
+            print(self.ui.tableWidget.disks_info[disk[0]])
+            try:
+                diskspaceinfo_bytes = json.loads(self.ui.tableWidget.disks_info[disk[0]][1])
+
+                if type(diskspaceinfo_bytes) == list:
+                    data.append([disk[0], int(diskspaceinfo_bytes[0]/(1024*1024*1024)), int(diskspaceinfo_bytes[1]/(1024*1024*1024))])
+                else:
+                    continue
+            except (TypeError, json.JSONDecodeError) as e:
+                print(e)
+                continue
+        print(data)
+        rawdata = json.dumps(data)
+
+        self.qwebview.setHtml("""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+                    <script>
+                        google.charts.load('current', {packages: ['corechart', 'bar']});
+                        google.charts.setOnLoadCallback(drawMaterial);
+                        function drawMaterial() {
+                              var data =   new google.visualization.arrayToDataTable(JSON.parse('""" + rawdata + """'));
+                              var materialOptions = {
+                                height: '100%',
+                                width: '100%',
+                                chart: {
+                                  title: 'DISK Volume INFO',
+                                },
+                                chartArea: {
+                                  height: '100%',
+                                  width: '100%'
+                                },
+                                bar: {groupWidth: "80%"},
+                                hAxis: {
+                                  format: '',
+                                  title: 'Space(GB)',
+                                  minValue: 0
+                                },
+                                vAxis: {
+                                  title: 'DISK LABEL'
+                                },
+                                bars: 'horizontal'
+                              };
+                              var materialChart = new google.charts.Bar(document.getElementById('chart_div'));
+                              materialChart.draw(data, google.charts.Bar.convertOptions(materialOptions));
+                        }
+                        </script>
+                    </head>
+                    <body>
+                        <!--Div that will hold the pie chart-->
+                        <div id="chart_div" style="width: 800px; height: 600px;"></div>
+                    </body>
+                </html>
+            """)
+        self.qwebview.show()
+        self.fnDisksList()
 
     @QtCore.pyqtSlot(str)
     def update_labelmsg(self, msg):
@@ -597,6 +676,16 @@ class searchWidget(QtWidgets.QWidget):
     def treedbclick(self, idx):
         QtGui.QDesktopServices.openUrl(
             QtCore.QUrl().fromLocalFile(self.ui.treeView.model().itemFromIndex(idx).qfileinfo.absolutePath()))
+
+    def fnDisksList(self):
+
+        disks = []
+        for idx in range(self.ui.tableWidget.rowCount()):
+            disk_path = self.ui.tableWidget.item(idx, 1).text()
+            disk_label = self.ui.tableWidget.item(idx, 0).text()
+            disks.append([disk_label, disk_path, ])
+
+        return disks
 
     def closeEvent(self, QMoveEvent):
         super(searchWidget, self).closeEvent(QMoveEvent)    #寫入需要儲存的參數
