@@ -53,7 +53,7 @@ def GetHumanReadable(size, precision=1):
         return 'No File Size Data'
 
 
-def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, label, signal_JobFinished = None):
+def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, label, path, signal_JobFinished :QtCore.pyqtSignal(str)):
     semaphore.acquire()
     conn = sqlite3.connect(db_location)
     cur = conn.cursor()
@@ -62,7 +62,10 @@ def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, l
     if len(cur.execute("SELECT * FROM disk WHERE label = ?", [label]).fetchall()) > 0:
         disk_info = cur.execute("SELECT * FROM disk WHERE label = ?", [label]).fetchall()[0]
         disk_id = disk_info[0]
-        scan_path = disk_info[2]
+
+    scan_path = path
+
+    conn.close()
 
     # 清除相同 disk_id 的紀錄
     sql_cmd_queue.put(("DELETE FROM files WHERE disk_id = ?", (copy.copy(disk_id),)))
@@ -89,14 +92,15 @@ def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, l
             sql_cmd_queue.put(("INSERT INTO files VALUES (?, ?, ?, ?)", (root, '', disk_id, 0)))
             count += 1
 
-    sql_cmd_queue.put(("COMMIT",), block=False)
+
     print("Files Count = " + str(count))
 
     space_available = json.dumps([QtCore.QStorageInfo(scan_path).bytesAvailable(), QtCore.QStorageInfo(scan_path).bytesTotal()])
     print(label + ' - SPACE - ' + space_available)
     check_date = datetime.datetime.now().strftime("%Y%m%d %H%M%S")
-    sql_cmd_queue.put(("UPDATE disk SET space_available = ? , check_date = ? WHERE disk_id = ?", copy.copy((space_available, check_date, disk_id))))
 
+    sql_cmd_queue.put(("UPDATE disk SET space_available = ? , check_date = ? WHERE disk_id = ?", (space_available, check_date, disk_id)))
+    sql_cmd_queue.put(("COMMIT",), block=False)
     print(label + " os.walk() Finished")
     signal_JobFinished.emit(label + " os.walk() Finished")
     semaphore.release()
@@ -129,7 +133,7 @@ class SQLExecuter(QtCore.QObject):
 
         while not self.flag_exit:
             try:
-                cmd = self.sql_cmd_queue.get(block=True, timeout=0.01)
+                cmd = self.sql_cmd_queue.get(block=True, timeout=0.001)
                 if cmd[0] == 'COMMIT':
                     conn.commit()
                 else:
@@ -148,7 +152,8 @@ class TblWidget(QtWidgets.QTableWidget):    # 視窗右側磁碟清單
     signal_Update_LabelMsg = None
     signal_LoadSearchPath = QtCore.pyqtSignal()
     signal_Update_Disk_Files = None
-    disks_info={}
+
+    disks_info = {}
 
     def __init__(self, row, col):
         super().__init__(row, col)
@@ -182,12 +187,26 @@ class TblWidget(QtWidgets.QTableWidget):    # 視窗右側磁碟清單
     @QtCore.pyqtSlot()
     def fnUpdateDiskConnectionStatus(self):
         for idx in range(self.rowCount()):
-            item = QtCore.QStorageInfo(self.item(idx, 1).text())
-            if not(item.isValid() and item.isReady()):
+            scan_path = self.item(idx, 1).text()
+            label = self.item(idx, 0).text()
+            disk = QtCore.QStorageInfo(scan_path)
+
+            if not(disk.isValid() and disk.isReady()):
                 self.item(idx, 0).setForeground(QtGui.QBrush(QtCore.Qt.darkRed))
                 self.item(idx, 1).setForeground(QtGui.QBrush(QtCore.Qt.black))
             else:
                 self.item(idx, 1).setForeground(QtGui.QBrush(QtCore.Qt.gray))
+                self.disks_info[label][1] = json.dumps([QtCore.QStorageInfo(scan_path).bytesAvailable(), QtCore.QStorageInfo(scan_path).bytesTotal()])
+                self.item(idx, 3).setText(self.disks_info[label][1])    # volume space
+
+                if not self.parent().cm1.flag_Busy:
+
+                    cur = self.conn.cursor()
+                    if len(cur.execute("SELECT * FROM disk WHERE label = ?", [label]).fetchall()) > 0:
+                        cur.execute("UPDATE disk SET space_available = ? WHERE label = ?",
+                                    [json.dumps([QtCore.QStorageInfo(scan_path).bytesAvailable(), QtCore.QStorageInfo(scan_path).bytesTotal()]), label])
+                    self.conn.commit()
+
 
     @QtCore.pyqtSlot()
     def fnLoadSearchPath(self):
@@ -203,13 +222,14 @@ class TblWidget(QtWidgets.QTableWidget):    # 視窗右側磁碟清單
         for row in cur.execute("SELECT * FROM disk ORDER BY disk_id"):
             self.insertRow(self.rowCount())
             #print(row)
+            disk_path = QtWidgets.QTableWidgetItem(row[2], 0).text()
             try:
                 self.disks_info[row[1]] = [row[2], row[3], row[4]]    # [path, volume space, check date]
                 self.setItem(idx, 2, QtWidgets.QTableWidgetItem(str(row[0]), 0))    # disk_id (integral)
                 self.setItem(idx, 0, QtWidgets.QTableWidgetItem(row[1], 0))         # label
                 self.setItem(idx, 1, QtWidgets.QTableWidgetItem(row[2], 0))         # path
-                if not (QtCore.QStorageInfo(QtWidgets.QTableWidgetItem(row[2], 0).text()).isValid() and
-                        QtCore.QStorageInfo(QtWidgets.QTableWidgetItem(row[2], 0).text()).isReady()):
+                if not (QtCore.QStorageInfo(disk_path).isValid() and
+                        QtCore.QStorageInfo(disk_path).isReady()):
                     self.item(idx, 1).setForeground(QtGui.QBrush(QtCore.Qt.gray))
                 self.setItem(idx, 3, QtWidgets.QTableWidgetItem(row[3], 0))         # volume space
                 self.setItem(idx, 4, QtWidgets.QTableWidgetItem(row[4], 0))         # check date
@@ -396,6 +416,8 @@ class CoreMachine(QtCore.QObject):
     signal_LoadSearchPath = None
     flag_Busy = False
 
+    entire_path_set = None    # 供外部存放磁碟的對應路徑
+
     def __init__(self, conn):
         super().__init__()
         self.count = 0
@@ -423,13 +445,16 @@ class CoreMachine(QtCore.QObject):
         with self.lock:
             self.entire_path_set = pathset
 
+    def space_available(self, scan_path):
+        return QtCore.QStorageInfo(scan_path).bytesAvailable(), QtCore.QStorageInfo(scan_path).bytesTotal()
+
     @QtCore.pyqtSlot(str)
     def job_finished(self, msg):
         self.signal_Update_LabelMsg.emit(msg)
         QtWidgets.QApplication.processEvents()
 
     @QtCore.pyqtSlot(list)
-    def scan_disk(self, path_set):
+    def scan_disk(self, disk_labels):
         self.flag_Busy = True
         self.signal_MessageLabel_Busy.emit(True)
         print("scan_disk @ {}".format(QtCore.QThread.currentThread().objectName()))
@@ -443,9 +468,13 @@ class CoreMachine(QtCore.QObject):
         thread_sqlcmdexecutor = threading.Thread(target=sql_cmd_executor.wait)
         thread_sqlcmdexecutor.start()
 
-        for job in path_set:
-            threads.append(threading.Thread(target=scan_directory, kwargs={"semaphore": semaphore, "sql_cmd_queue": sql_cmd_queue,
-                                                                           "label": job, "signal_JobFinished": self.signal_JobFinished}))
+        for disk_label in disk_labels:
+            disk_path = self.entire_path_set[disk_label]
+            threads.append(threading.Thread(target=scan_directory, kwargs={"semaphore": semaphore,
+                                                                           "sql_cmd_queue": sql_cmd_queue,
+                                                                           "label": disk_label,
+                                                                           "path": disk_path,
+                                                                           "signal_JobFinished": self.signal_JobFinished}))
             threads[-1].start()
 
         for th in threads:
@@ -464,6 +493,7 @@ class CoreMachine(QtCore.QObject):
         cur = conn.cursor()
         cur.execute('VACUUM files')
         conn.commit()
+        conn.close()
 
         QtWidgets.QApplication.restoreOverrideCursor()
         self.flag_Busy = False
@@ -650,10 +680,10 @@ class searchWidget(QtWidgets.QWidget):
 
     def fnUpdating(self):  # 更新目錄資料庫的檔案名稱資料
         drive = []
-        entire_disk_path = []
+        entire_disk_path = {}
 
         for idx in range(self.ui.tableWidget.rowCount()):
-            entire_disk_path.append(self.ui.tableWidget.item(idx, 1).text())
+            entire_disk_path[self.ui.tableWidget.item(idx, 0).text()] = self.ui.tableWidget.item(idx, 1).text()
 
         self.cm1.entire_path_set = entire_disk_path
 
