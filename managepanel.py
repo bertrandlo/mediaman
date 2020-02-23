@@ -12,6 +12,8 @@ import queue
 import time
 import json
 import copy
+from jinja2 import Environment, PackageLoader
+import tempfile
 from PyQt5 import QtCore, QtGui, QtWidgets, QtWebEngineWidgets
 from PyQt5.QtCore import QUrl
 import tree
@@ -559,7 +561,7 @@ class searchWidget(QtWidgets.QWidget):
         self.ui.treeView.signal_item_clicked.connect(lambda idx: self.update_labelmsg(
             GetHumanReadable(self.treemodel.itemFromIndex(idx).file_size)))
 
-    @QtCore.pyqtSlot()
+    @QtCore.pyqtSlot()    # 磁碟空間統計資料
     def fnTest(self):
         self.qwebview.setWindowTitle('磁碟空間統計資料')
         self.qwebview.setStyleSheet(cssStyle)
@@ -579,50 +581,15 @@ class searchWidget(QtWidgets.QWidget):
         print(data)
         rawdata = json.dumps(data)
 
-        self.qwebview.setHtml("""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="utf-8">
-                    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
-                    <script>
-                        google.charts.load('current', {packages: ['corechart', 'bar']});
-                        google.charts.setOnLoadCallback(drawMaterial);
-                        function drawMaterial() {
-                              var data =   new google.visualization.arrayToDataTable(JSON.parse('""" + rawdata + """'));
-                              var materialOptions = {
-                                height: '100%',
-                                width: '100%',
-                                chart: {
-                                  title: 'DISK Volume INFO',
-                                },
-                                chartArea: {
-                                  height: '100%',
-                                  width: '100%'
-                                },
-                                bar: {groupWidth: "80%"},
-                                hAxis: {
-                                  format: '',
-                                  title: 'Space(GB)',
-                                  minValue: 0
-                                },
-                                vAxis: {
-                                  title: 'DISK LABEL'
-                                },
-                                bars: 'horizontal'
-                              };
-                              var materialChart = new google.charts.Bar(document.getElementById('chart_div'));
-                              materialChart.draw(data, google.charts.Bar.convertOptions(materialOptions));
-                        }
-                        </script>
-                    </head>
-                    <body>
-                        <!--Div that will hold the pie chart-->
-                        <div id="chart_div" style="width: 800px; height: 600px;"></div>
-                    </body>
-                </html>
-            """)
-        self.qwebview.show()
+        env = Environment(loader=PackageLoader('mediaman', 'templates'))
+        tmp = tempfile.mkstemp(suffix=".htm", prefix='output')  # [file_handle, filepathname]
+        template = env.get_template('disk_quota.htm')
+
+        with open(tmp[1], 'w+', encoding='utf-8') as f:
+            f.write(template.render(rawdata=rawdata))
+
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(tmp[1]))
+
         self.fnDisksList()
 
     @QtCore.pyqtSlot(str)
