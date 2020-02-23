@@ -86,17 +86,7 @@ def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel, signa
 
                                     # 檢查是否有重複目錄
                                     dest_folder = file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + fullnewname
-
-                                    if QtCore.QDir(dest_folder).exists():
-
-                                        #QtWidgets.QMessageBox('重複目錄名稱-'+dest_folder)
-                                        #signalMsgboxShow.emit('重複目錄名稱 - '+dest_folder)
-                                        appendixStr=''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(4))
-                                        QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(), dest_folder+'-[重複]'+appendixStr)
-                                        QtGui.QDesktopServices.openUrl(QtCore.QUrl().fromLocalFile(dest_folder))
-
-                                    else:
-                                        QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(), dest_folder)
+                                    fn_rename_directory(file_model, dest_folder, job)
 
                                 if temp[0].text.strip(' \t\n\r') == 'AV女優：':
                                     if not temp[1].text.strip(' \t\n\r'):
@@ -110,8 +100,8 @@ def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel, signa
                                 f.write('<span>' + temp[1].text.strip(' \t\n\r') + '</span><br>\n')
 
                     if len(actress_name_list) > 1 and all(x == actress_name_list[0] for x in actress_name_list):
-                        QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(),
-                                             file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + fullnewname)
+                        dest_folder = file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + fullnewname
+                        fn_rename_directory(file_model, dest_folder, job)
                         continue
 
                 os.close(tmp[0])
@@ -123,6 +113,20 @@ def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel, signa
         else:
             QtGui.QDesktopServices.openUrl(
                 QtCore.QUrl('https://www.google.com.tw/?q=' + keyword + '&lr=lang_zh-TW#q=' + keyword + '&tabs=0'))
+
+
+def fn_rename_directory(file_model, dest_folder, job):
+
+    if QtCore.QDir(dest_folder).exists():
+
+        # QtWidgets.QMessageBox('重複目錄名稱-'+dest_folder)
+        # signalMsgboxShow.emit('重複目錄名稱 - '+dest_folder)
+        appendixStr = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(4))
+        QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(), dest_folder + '-[重複]' + appendixStr)
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl().fromLocalFile(dest_folder))
+
+    else:
+        QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(), dest_folder)
 
 
 def fnRename(strOldName, keyword=''):
