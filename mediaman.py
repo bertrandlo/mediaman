@@ -234,11 +234,12 @@ class treeviewFolder(QtWidgets.QTreeView):
                 newFileName = QtGui.QGuiApplication.clipboard().text() + '_' + newFileName
 
             if fnOriginal != newFileName:
-
-                result = QtCore.QDir().rename(selDirFileinfo.dir().absoluteFilePath(fnOriginal), selDirFileinfo.dir().absoluteFilePath(newFileName))
+                new_file_name = selDirFileinfo.dir().absoluteFilePath(newFileName)
+                result = QtCore.QDir().rename(selDirFileinfo.dir().absoluteFilePath(fnOriginal), new_file_name)
                 if result:
                     self.parent.labelMsg.setText('[OK] '+selDirFileinfo.dir().absoluteFilePath(newFileName))
                 else:
+                    QtCore.QDir().rename(selDirFileinfo.dir().absoluteFilePath(fnOriginal), new_file_name + '_[重複]')
                     self.parent.labelMsg.setText('[Fail] '+selDirFileinfo.dir().absoluteFilePath(newFileName))
 
 
