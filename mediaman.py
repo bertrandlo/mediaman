@@ -647,6 +647,7 @@ class myFileListWidget(QtWidgets.QWidget):
                                                             "signalMsgboxShow": self.signalMsgboxShow}).start()
 
         if keyevent.key() == Qt.Key_Delete:
+            from pathlib import Path
             self.revItemSrc = self.focusWidget()
 
             if self.focusWidget() == self.treeview:         #刪除目錄
@@ -658,16 +659,20 @@ class myFileListWidget(QtWidgets.QWidget):
 
                 if qdir.exists():
                     self.treeview.setCurrentIndex(self.treeview.model().index(idx.row(), 0, idx.parent()))
-                    threading.Thread(target=send2trash, kwargs={"path": qdir.absolutePath()}).start()    #利用執行緒進行刪除工作 避免UI停頓
+                    threading.Thread(target=send2trash, kwargs={"path": str(Path(qdir.absolutePath()))}).start()    #利用執行緒進行刪除工作 避免UI停頓
                     self.fnShowSubDir(self.treeview.currentIndex())
                     self.labelMsg.setText('[DELETE]'+qdir.absolutePath())
                     logging.debug('[DELETE]'+qdir.absolutePath())
 
             if self.focusWidget() == self.fileinfo:         #刪除檔案
+
                 print('刪除檔案')
                 delFileListIndex = self.fileinfo.selectedIndexes()
                 for idx in delFileListIndex:
-                    threading.Thread(target=send2trash, kwargs={"path": self.fileinfo.model().fileInfo(idx).absoluteFilePath()}).start()
+                    threading.Thread(target=send2trash,
+                                     kwargs={"path": str(Path(self.fileinfo.model().fileInfo(idx).absoluteFilePath()))}).start()
+                    #Path(self.fileinfo.model().fileInfo(idx).absoluteFilePath()).unlink()
+                    #send2trash(str(Path(self.fileinfo.model().fileInfo(idx).absoluteFilePath())))
                     self.labelMsg.setText('[DELETE]'+self.fileinfo.model().fileInfo(idx).absoluteFilePath())
                     logging.debug('[DELETE]'+self.fileinfo.model().fileInfo(idx).absoluteFilePath())
 
