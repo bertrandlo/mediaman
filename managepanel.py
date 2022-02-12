@@ -497,8 +497,9 @@ class CoreMachine(QtCore.QObject):
         thread_sqlcmdexecutor.join()
 
         conn = sqlite3.connect(db_location)
+        print(conn)
         cur = conn.cursor()
-        cur.execute('VACUUM files')
+        cur.execute('VACUUM')
         conn.commit()
         conn.close()
 
