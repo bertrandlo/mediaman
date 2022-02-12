@@ -2,6 +2,7 @@
 # 處理所有硬碟影片檔案索引
 # 規劃設計了一個 CoreMachine 類別處理所有的工作 UI Singal Connect 交待工作
 import os
+import pathlib
 import sys
 import logging
 import sqlite3
@@ -18,7 +19,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets, QtWebEngineWidgets
 from PyQt5.QtCore import QUrl
 import tree
 
-db_location = 'files.db'
+db_location = pathlib.Path(__file__).parent.resolve() / 'files.db'
 disk_set = []
 
 cssStyle = """
