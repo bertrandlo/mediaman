@@ -611,7 +611,7 @@ class myFileListWidget(QtWidgets.QWidget):
         self.keypressed.emit(QKeyEvent)
 
     def fnBtnHomeClick(self, locationline):
-        self.location.cd('A:')
+        self.location.cd('C:\\Users\\brt\\Desktop\\storage\\BT\\00-下載中')
         locationline.setText('')
         self.fnManualLocation()
         self.treeview.setFocus()
