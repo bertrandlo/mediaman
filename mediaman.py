@@ -367,7 +367,8 @@ class myFileListWidget(QtWidgets.QWidget):
     #myModel.setRootPath(QtCore.QDir.currentPath())
     keypressed = QtCore.pyqtSignal(QtGui.QKeyEvent)
     revItemSrc = None
-    settings = QtCore.QSettings("candy", "brt")                # Registry Current_USER\Software\Candy\brt
+    #settings = QtCore.QSettings("candy", "brt")                # Registry Current_USER\Software\Candy\brt
+    settings = QtCore.QSettings("settings.ini", QtCore.QSettings.IniFormat)
 
     signalMsgboxShow = QtCore.pyqtSignal(str)
 
