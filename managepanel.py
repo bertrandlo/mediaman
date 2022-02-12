@@ -519,7 +519,7 @@ class searchWidget(QtWidgets.QWidget):
 
     def __init__(self, parent: QtWidgets.QApplication):
         super().__init__()
-        self.settings = QtCore.QSettings("candy", "brt")
+        self.settings = QtCore.QSettings("settings.ini", QtCore.QSettings.IniFormat)
         self.conn = sqlite3.connect(db_location)
 
         # self.treemodel = QtGui.QStandardItemModel()
