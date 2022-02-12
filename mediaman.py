@@ -1,8 +1,15 @@
-#-*- coding: utf-8 -*-
 import sys, os, re, threading, logging, requests, tempfile, pickle, subprocess
+import multiprocessing
+
+import ffmpeg_ui
+import managepanel
 from urllib3.exceptions import InsecureRequestWarning
 import catalogman
-import random, string
+import random
+import string
+from dotenv import load_dotenv
+
+import websearch
 from utils import keyword_extract
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -503,9 +510,9 @@ class myFileListWidget(QtWidgets.QWidget):
         btnHome.clicked.connect(lambda: self.fnBtnHomeClick(locationline))
 
         #btnSearch.clicked.connect(lambda: self.win['searching'].show())
-        btnSearch.clicked.connect(lambda: subprocess.Popen([sys.executable, os.path.dirname(sys.argv[0]) + "/managepanel.py"]))
-        btnWebService.clicked.connect(lambda: subprocess.Popen([sys.executable, os.path.dirname(sys.argv[0]) + "/websearch.py"]))
-        btnFileConvert.clicked.connect(lambda: subprocess.Popen([sys.executable, os.path.dirname(sys.argv[0]) + "/ffmpeg_ui.py"]))
+        btnSearch.clicked.connect(lambda: multiprocessing.Process(target=managepanel.main, daemon=True).start())
+        btnWebService.clicked.connect(lambda: multiprocessing.Process(target=websearch.main, daemon=True).start())
+        btnFileConvert.clicked.connect(lambda: multiprocessing.Process(target=ffmpeg_ui.main, daemon=True).start())
 
         locationline.returnPressed.connect(self.fnManualLocation)
         nameline.returnPressed.connect(self.fnItemRevName)
@@ -785,4 +792,5 @@ def main():
     sys.exit(app.exec_())
 
 if __name__ == '__main__':
+    multiprocessing.freeze_support()
     main()
