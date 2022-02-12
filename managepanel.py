@@ -199,7 +199,8 @@ class TblWidget(QtWidgets.QTableWidget):    # 視窗右側磁碟清單
                 self.item(idx, 1).setForeground(QtGui.QBrush(QtCore.Qt.black))
             else:
                 self.item(idx, 1).setForeground(QtGui.QBrush(QtCore.Qt.gray))
-                self.disks_info[label][1] = json.dumps([QtCore.QStorageInfo(scan_path).bytesAvailable(), QtCore.QStorageInfo(scan_path).bytesTotal()])
+                self.disks_info[label][1] = json.dumps([int(QtCore.QStorageInfo(scan_path).bytesAvailable()/(1024*1024*1024)),
+                                                        int(QtCore.QStorageInfo(scan_path).bytesTotal()/(1024*1024*1024))])
                 self.item(idx, 3).setText(self.disks_info[label][1])    # volume space
 
                 if not self.parent().cm1.flag_Busy:
@@ -207,7 +208,10 @@ class TblWidget(QtWidgets.QTableWidget):    # 視窗右側磁碟清單
                     cur = self.conn.cursor()
                     if len(cur.execute("SELECT * FROM disk WHERE label = ?", [label]).fetchall()) > 0:
                         cur.execute("UPDATE disk SET space_available = ? WHERE label = ?",
-                                    [json.dumps([QtCore.QStorageInfo(scan_path).bytesAvailable(), QtCore.QStorageInfo(scan_path).bytesTotal()]), label])
+                                    [json.dumps(
+                                        [int(QtCore.QStorageInfo(scan_path).bytesAvailable()/(1024*1024*1024)),
+                                         int(QtCore.QStorageInfo(scan_path).bytesTotal()/(1024*1024*1024))]),
+                                        label])
                     self.conn.commit()
 
 
