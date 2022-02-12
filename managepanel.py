@@ -690,8 +690,8 @@ class searchWidget(QtWidgets.QWidget):
 
         return disks
 
-    def closeEvent(self, QMoveEvent):
-        super(searchWidget, self).closeEvent(QMoveEvent)    #寫入需要儲存的參數
+    def closeEvent(self, q_move_event):
+        super(searchWidget, self).closeEvent(q_move_event)    #寫入需要儲存的參數
         self.settings.setValue("search-win-pos", self.pos())
         self.settings.sync()
         self.deleteLater()                                                #多個視窗 避免退出錯誤
