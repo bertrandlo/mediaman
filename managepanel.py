@@ -1,22 +1,22 @@
 # -*- coding: utf-8 -*-
 # 處理所有硬碟影片檔案索引
 # 規劃設計了一個 CoreMachine 類別處理所有的工作 UI Singal Connect 交待工作
-import os
-import pathlib
-import sys
-import logging
-import sqlite3
+import copy
 import datetime
 import itertools
-import threading
-import queue
-import time
 import json
-import copy
-from jinja2 import Environment, PackageLoader
+import logging
+import os
+import pathlib
+import queue
+import sqlite3
+import sys
 import tempfile
+import threading
+
 from PyQt5 import QtCore, QtGui, QtWidgets, QtWebEngineWidgets
-from PyQt5.QtCore import QUrl
+from jinja2 import Environment, PackageLoader
+
 import tree
 
 db_location = pathlib.Path(__file__).parent.resolve() / 'files.db'

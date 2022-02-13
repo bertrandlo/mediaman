@@ -1,21 +1,23 @@
-import sys, os, re, threading, logging, requests, tempfile, pickle, subprocess
+import logging
 import multiprocessing
+import os
+import random
+import requests
+import string
+import sys
+import tempfile
+import threading
+
+from PyQt5 import QtGui, QtCore, QtWidgets
+from PyQt5.QtCore import Qt  # some flags definition
+from bs4 import BeautifulSoup
+from send2trash import send2trash
+from urllib3.exceptions import InsecureRequestWarning
 
 import ffmpeg_ui
 import managepanel
-from urllib3.exceptions import InsecureRequestWarning
-import catalogman
-import random
-import string
-from dotenv import load_dotenv
-
 import websearch
 from utils import keyword_extract
-
-from PyQt5 import QtGui, QtCore, QtWidgets
-from PyQt5.QtCore import Qt                 # some flags definition
-from send2trash import send2trash
-from bs4 import BeautifulSoup
 
 
 def GetHumanReadable(size, precision=1):
