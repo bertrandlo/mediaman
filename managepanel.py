@@ -562,13 +562,13 @@ class searchWidget(QtWidgets.QWidget):
         self.signal_Searching.connect(self.fnSearching)
         self.ui.btnSave.clicked.connect(self.fnUpdating)
         self.ui.btnSearch.clicked.connect(self.fnSearching)
-        self.ui.btnDisksInfo.clicked.connect(self.fnTest)
+        self.ui.btnDisksInfo.clicked.connect(self.showDiskInfo)
         self.ui.treeView.doubleClicked.connect(self.treedbclick)
         self.ui.treeView.signal_item_clicked.connect(lambda idx: self.update_labelmsg(
             GetHumanReadable(self.treemodel.itemFromIndex(idx).file_size)))
 
     @QtCore.pyqtSlot()    # 磁碟空間統計資料
-    def fnTest(self):
+    def showDiskInfo(self):
         self.qwebview.setWindowTitle('磁碟空間統計資料')
         self.qwebview.setStyleSheet(cssStyle)
         data = [['Disk', 'Free', 'Total']]
@@ -578,7 +578,7 @@ class searchWidget(QtWidgets.QWidget):
                 diskspaceinfo_bytes = json.loads(self.ui.tableWidget.disks_info[disk[0]][1])
 
                 if type(diskspaceinfo_bytes) == list:
-                    data.append([disk[0], int(diskspaceinfo_bytes[0]/(1024*1024*1024)), int(diskspaceinfo_bytes[1]/(1024*1024*1024))])
+                    data.append([disk[0], diskspaceinfo_bytes[0], diskspaceinfo_bytes[1]])
                 else:
                     continue
             except (TypeError, json.JSONDecodeError) as e:
