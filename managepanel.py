@@ -199,8 +199,8 @@ class TblWidget(QtWidgets.QTableWidget):    # 視窗右側磁碟清單
                 self.item(idx, 1).setForeground(QtGui.QBrush(QtCore.Qt.black))
             else:
                 self.item(idx, 1).setForeground(QtGui.QBrush(QtCore.Qt.gray))
-                self.disks_info[label][1] = json.dumps([int(QtCore.QStorageInfo(scan_path).bytesAvailable()/(1024*1024*1024)),
-                                                        int(QtCore.QStorageInfo(scan_path).bytesTotal()/(1024*1024*1024))])
+                self.disks_info[label][1] = json.dumps([QtCore.QStorageInfo(scan_path).bytesAvailable(),
+                                                        QtCore.QStorageInfo(scan_path).bytesTotal()])
                 self.item(idx, 3).setText(self.disks_info[label][1])    # volume space
 
                 if not self.parent().cm1.flag_Busy:
@@ -209,9 +209,8 @@ class TblWidget(QtWidgets.QTableWidget):    # 視窗右側磁碟清單
                     if len(cur.execute("SELECT * FROM disk WHERE label = ?", [label]).fetchall()) > 0:
                         cur.execute("UPDATE disk SET space_available = ? WHERE label = ?",
                                     [json.dumps(
-                                        [int(QtCore.QStorageInfo(scan_path).bytesAvailable()/(1024*1024*1024)),
-                                         int(QtCore.QStorageInfo(scan_path).bytesTotal()/(1024*1024*1024))]),
-                                        label])
+                                        [QtCore.QStorageInfo(scan_path).bytesAvailable(),
+                                         QtCore.QStorageInfo(scan_path).bytesTotal()]), label])
                     self.conn.commit()
 
 
@@ -300,8 +299,11 @@ class TblWidget(QtWidgets.QTableWidget):    # 視窗右側磁碟清單
             currentitem.setText(QtCore.QDir().fromNativeSeparators(currentitem.text()))
 
     def cellclicked(self, row, column):
+        import ast
         self.selectRow(row)
-        self.label_msg = self.item(row, 0).text() + ' - ' + self.item(row, 3).text() + '@' + self.item(row, 4).text()
+        # 磁碟資訊存放在隱藏的 cell
+        disk_volume_info = ast.literal_eval(self.item(row, 3).text())
+        self.label_msg = self.item(row, 0).text() + ' ' + GetHumanReadable(int(disk_volume_info[0])) + " / "  + GetHumanReadable(int(disk_volume_info[1])) + '@' + self.item(row, 4).text()
         self.signal_Update_LabelMsg.emit(self.label_msg)
 
     def celldoubleclicked(self, row, column):
