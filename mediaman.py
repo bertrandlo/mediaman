@@ -17,6 +17,7 @@ from urllib3.exceptions import InsecureRequestWarning
 import ffmpeg_ui
 import managepanel
 import websearch
+from treeviewfolder import TreeViewFolder
 from utils import keyword_extract
 
 
@@ -154,106 +155,6 @@ def fnRename(strOldName, keyword=''):
     return strNewName
 
 
-class treeviewFolder(QtWidgets.QTreeView):
-
-    def __init__(self, parent):
-        '''
-         當 treeview widget 與 QFilesystemModel 連結後 只需要設定
-            setDragDropMode, setDragEnabled, setAcceptDrops, setDropIndicatorShown, setDefaultDropAction
-            剩下的 treeview 會自己處理 dropEvent dragEnterEvent
-            但使用者如果自行需要修改 這兩個事件 必須利用 super(userClassName, self).dropEvent(event)
-            讓原本的自動動作執行而非直接覆寫這些事件處理函數
-        :param parent:
-        :return:
-        '''
-        super().__init__()
-        self.parent = parent
-
-        self.setDragDropMode(QtWidgets.QAbstractItemView.DragDrop)
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.setDragDropOverwriteMode(True)
-        self.setDropIndicatorShown(True)
-        self.setDefaultDropAction(Qt.CopyAction)
-        self.setEditTriggers(QtWidgets.QAbstractItemView.EditKeyPressed)
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.setSelectionMode(self.ExtendedSelection)
-        self.customContextMenuRequested.connect(self.customCxMenuEvent)
-
-    def dragEnterEvent(self, event):
-        logging.debug('Drag - ' + event.mimeData().text())
-        if 'application/x-qt-windows-mime;value="FileName"' in event.mimeData().formats():
-            event.acceptProposedAction()
-            super().dragEnterEvent(event)   # 呼叫父類別方法
-        else:                               # 純文字的拖入處理
-            if 'text/plain' in event.mimeData().formats():
-                self.setAcceptDrops(True)
-                QtWidgets.QApplication.clipboard().setText(event.mimeData().text())
-                logging.debug('Drag Enter')
-                event.accept()
-
-    def dragMoveEvent(self, event):
-        #logging.debug('Drag - ' + event.mimeData().text())
-        if 'application/x-qt-windows-mime;value="FileName"' in event.mimeData().formats():
-            event.acceptProposedAction()
-            super().dragMoveEvent(event)   # 呼叫父類別方法
-        else:                               # 純文字的拖入處理
-            if 'text/plain' in event.mimeData().formats():
-                event.accept()
-
-    def dropEvent(self, event):
-        logging.debug('Drop - ' + event.mimeData().text())
-        if 'application/x-qt-windows-mime;value="FileName"' in event.mimeData().formats():
-            super().dropEvent(event)
-        else:
-            idx = self.indexAt(self.viewport().mapFromGlobal(QtGui.QCursor.pos()))
-            fn = self.model().fileName(idx)
-
-            if fn == '':  # 檢查是否有點選在項目上才顯示選單
-                msgbox = QtWidgets.QMessageBox(icon=QtWidgets.QMessageBox.Warning, text='請指定正確目錄')
-                msgbox.setWindowFlags(Qt.Popup)
-                msgbox.exec()
-            else:
-                QtWidgets.QApplication.clipboard().setText(event.mimeData().text())
-                strNewName = fnRename(fn, event.mimeData().text())
-                if strNewName != fn:
-                    result = QtCore.QDir().rename(self.model().fileInfo(idx).dir().absoluteFilePath(fn),
-                                           self.model().fileInfo(idx).dir().absoluteFilePath(strNewName))
-                    if result:
-                        self.parent.labelMsg.setText('[OK] ' + self.model().fileInfo(idx).dir().absoluteFilePath(strNewName))
-                    else:
-                        self.parent.labelMsg.setText('[Fail] ' + self.model().fileInfo(idx).dir().absoluteFilePath(strNewName))
-
-                event.acceptProposedAction()
-
-    def customCxMenuEvent(self, pos): #右鍵選單 - TreeView Widget
-
-        if self.model().fileName(self.indexAt(self.viewport().mapFromGlobal(QtGui.QCursor.pos()))) == '':    #檢查是否有點選在項目上才顯示選單
-            return
-
-        cxmenu = QtWidgets.QMenu()
-        act1 = QtWidgets.QAction('整理', self)
-        cxmenu.addAction(act1)
-        action = cxmenu.exec_(self.viewport().mapToGlobal(pos))
-
-        if action == act1:
-            selDirFileinfo = self.model().fileInfo(self.currentIndex())
-            fnOriginal = self.model().fileName(self.currentIndex())
-            newFileName = fnRename(fnOriginal)
-
-            if(len(QtGui.QGuiApplication.clipboard().text()) > 0):
-                newFileName = QtGui.QGuiApplication.clipboard().text() + '_' + newFileName
-
-            if fnOriginal != newFileName:
-                new_file_name = selDirFileinfo.dir().absoluteFilePath(newFileName)
-                result = QtCore.QDir().rename(selDirFileinfo.dir().absoluteFilePath(fnOriginal), new_file_name)
-                if result:
-                    self.parent.labelMsg.setText('[OK] '+selDirFileinfo.dir().absoluteFilePath(newFileName))
-                else:
-                    QtCore.QDir().rename(selDirFileinfo.dir().absoluteFilePath(fnOriginal), new_file_name + '_[重複]')
-                    self.parent.labelMsg.setText('[Fail] '+selDirFileinfo.dir().absoluteFilePath(newFileName))
-
-
 class myQDirModel(QtWidgets.QFileSystemModel):
 
     def __init__(self, parent=None):
@@ -374,7 +275,7 @@ class myFileListWidget(QtWidgets.QWidget):
     #settings = QtCore.QSettings("candy", "brt")                # Registry Current_USER\Software\Candy\brt
     settings = QtCore.QSettings("settings.ini", QtCore.QSettings.IniFormat)
 
-    signalMsgboxShow = QtCore.pyqtSignal(str)
+    signal_msgbox_show = QtCore.pyqtSignal(str)
 
     def __init__(self, app):
         super().__init__()
@@ -429,7 +330,7 @@ class myFileListWidget(QtWidgets.QWidget):
         self.msgbox = QtWidgets.QMessageBox(self)
         self.msgbox.hide()
 
-        treeview = treeviewFolder(self)
+        treeview = TreeViewFolder(self)
         treeview.setModel(self.myModel)
 
         treeview.setStyleSheet(style)
@@ -526,7 +427,7 @@ class myFileListWidget(QtWidgets.QWidget):
         fileinfo.doubleClicked.connect(lambda index: self.fnTableWidgetDbClick(index))
         fileinfo.clicked.connect(lambda index: self.fnShowFileBaseName(index, nameline))
 
-        self.signalMsgboxShow.connect(lambda msg: self.fnShowMsg(msg), QtCore.Qt.QueuedConnection)
+        self.signal_msgbox_show.connect(lambda msg: self.fnShowMsg(msg), QtCore.Qt.QueuedConnection)
 
         self.fnManualLocation()
         self.win = {}
@@ -656,7 +557,7 @@ class myFileListWidget(QtWidgets.QWidget):
 
             threading.Thread(target=fn_web_searching, kwargs={"keywords": keywords,
                                                             "file_model": file_model,
-                                                            "signalMsgboxShow": self.signalMsgboxShow}).start()
+                                                            "signal_msgbox_show": self.signal_msgbox_show}).start()
 
         if keyevent.key() == Qt.Key_Delete:
             from pathlib import Path
