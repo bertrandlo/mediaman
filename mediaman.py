@@ -386,9 +386,9 @@ class myFileListWidget(QtWidgets.QWidget):
         self.setAttribute(Qt.WA_DeleteOnClose)          #讓QT在最後一個視窗關閉時 自動清除全部 thread
 
         self.setWindowIcon(QtGui.QIcon(os.path.join(os.path.dirname(sys.modules[__name__].__file__), 'icon.ico')))
-        self.location = QtCore.QDir(self.settings.value("location", QtCore.QDir.homePath()))
+        self.location = QtCore.QDir(self.settings.value("home", 'C:/Users/brt/Desktop/storage/BT/00-下載中'))
 
-        self.myModel.setRootPath(self.settings.value("location", QtCore.QDir.homePath()))
+        self.myModel.setRootPath(self.settings.value("home", 'C:/Users/brt/Desktop/storage/BT/00-下載中'))
         style = """
                 QWidget {
                     font-size:16px;
@@ -443,7 +443,7 @@ class myFileListWidget(QtWidgets.QWidget):
         fileinfo = filetable()
         fileinfo.setStyleSheet(style)
         fileinfo.setModel(myQDirModel())
-        fileinfo.model().setRootPath(QtCore.QDir.homePath())
+        fileinfo.model().setRootPath(self.settings.value("home", 'C:/Users/brt/Desktop/storage/BT/00-下載中'))
         fileinfo.model().setFilter(QtCore.QDir.Files|QtCore.QDir.NoDotAndDotDot|QtCore.QDir.CaseSensitive)
         fileinfo.setRootIndex(fileinfo.model().index(self.location.absolutePath()))
         fileinfo.verticalHeader().setVisible(False)
@@ -613,8 +613,8 @@ class myFileListWidget(QtWidgets.QWidget):
         self.keypressed.emit(QKeyEvent)
 
     def fnBtnHomeClick(self, locationline):
-        self.location.cd('C:\\Users\\brt\\Desktop\\storage\\BT\\00-下載中')
-        locationline.setText('')
+        self.location.cd('C:/Users/brt/Desktop/storage/BT/00-下載中')
+        locationline.setText('C:/Users/brt/Desktop/storage/BT/00-下載中')
         self.fnManualLocation()
         self.treeview.setFocus()
 
