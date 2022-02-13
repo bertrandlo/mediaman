@@ -29,13 +29,13 @@ def get_human_readable(size, precision=1):
     return "%.*f%s" % (precision, size, suffixes[suffix_index])
 
 
-def removeDir(dirName):
+def remove_dir(dirName):
     result = True
     qdir = QtCore.QDir(dirName)
     if qdir.exists(dirName):
         for info in qdir.entryInfoList(QtCore.QDir.NoDotAndDotDot | QtCore.QDir.System | QtCore.QDir.Hidden | QtCore.QDir.AllDirs | QtCore.QDir.Files, QtCore.QDir.DirsFirst):
             if info.isDir():
-                result = removeDir(info.absoluteFilePath())
+                result = remove_dir(info.absoluteFilePath())
             else:
                 result = QtCore.QFile().remove(info.absoluteFilePath())
 
