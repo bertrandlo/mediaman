@@ -20,13 +20,13 @@ import websearch
 from utils import keyword_extract
 
 
-def GetHumanReadable(size, precision=1):
-    suffixes=['B', 'KB', 'MB', 'GB', 'TB']
-    suffixIndex = 0
-    while size > 1024 and suffixIndex < 4:
-        suffixIndex += 1 #increment the index of the suffix
-        size = size/1024.0 #apply the division
-    return "%.*f%s" % (precision, size, suffixes[suffixIndex])
+def get_human_readable(size, precision=1):
+    suffixes = ['B', 'KB', 'MB', 'GB', 'TB']
+    suffix_index = 0
+    while size > 1024 and suffix_index < 4:
+        suffix_index += 1  # increment the index of the suffix
+        size = size/1024.0  # apply the division
+    return "%.*f%s" % (precision, size, suffixes[suffix_index])
 
 
 def removeDir(dirName):
@@ -744,7 +744,7 @@ class myFileListWidget(QtWidgets.QWidget):
                 except:
                     break
                 newItem = [QtWidgets.QTableWidgetItem(item.fileName()),
-                           QtWidgets.QTableWidgetItem(GetHumanReadable(item.size())),
+                           QtWidgets.QTableWidgetItem(get_human_readable(item.size())),
                            QtWidgets.QTableWidgetItem(item.lastModified().toString(Qt.ISODate))]
                 fileinfo.setItem(x, 0, newItem[0])
                 fileinfo.setItem(x, 1, newItem[1])
@@ -773,7 +773,7 @@ class myFileListWidget(QtWidgets.QWidget):
 
         # 檢查目錄所在磁碟可用容量
 
-        self.labelMsg.setText("可用容量 - " + GetHumanReadable(QtCore.QStorageInfo(self.location.absolutePath()).bytesAvailable()))
+        self.labelMsg.setText("可用容量 - " + get_human_readable(QtCore.QStorageInfo(self.location.absolutePath()).bytesAvailable()))
 
     def fnManualLocation(self):
         locationline = self.layout().itemAtPosition(0, 2).widget()
