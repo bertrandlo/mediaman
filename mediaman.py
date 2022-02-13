@@ -46,24 +46,26 @@ def remove_dir(dirName):
     return result
 
 
-def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel, signalMsgboxShow):
-    '''
+def fn_web_searching(keywords: list, file_model: QtWidgets.QFileSystemModel, signal_msgbox_show):
+    """
     搜尋 https://www.arzon.jp 並依據結果 直接更改目錄名稱 或 顯示結果
     :param keywords:
     :param file_model:
+    :param signal_msgbox_show: 顯示訊息對應的信號物件
     :return:
-    '''
-    #urllib3.disable_warnings()
+    """
+    # urllib3.disable_warnings()
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
     for job in keywords:
-        keyword, fullnewname, m = keyword_extract(job[0])
+        keyword, full_new_name, m = keyword_extract(job[0])
         print(file_model.fileInfo(job[1]).absoluteFilePath(), keyword)
 
         if m:
             db_url = "https://www.arzon.jp"
             session = requests.session()
             r = session.get(
-                db_url + '/index.php?action=adult_customer_agecheck&agecheck=1&redirect=https%3A%2F%2Fwww.arzon.jp%2Fitemlist.html%3Ft%3D%26m%3Dall%26s%3D%26q%3D' + keyword,
+                db_url + '/index.php?action=adult_customer_agecheck&agecheck=1&redirect=https%3A%2F%2Fwww.arzon.jp'
+                         '%2Fitemlist.html%3Ft%3D%26m%3Dall%26s%3D%26q%3D' + keyword,
                 verify=False)
             r.encoding = 'utf-8'
             soup = BeautifulSoup(r.text, "html.parser")
@@ -91,10 +93,10 @@ def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel, signa
                                     else:
                                         actress_name = temp[1].text.strip(' \t\n\r')
 
-                                    print(actress_name, keyword, fullnewname)
+                                    print(actress_name, keyword, full_new_name)
 
                                     # 檢查是否有重複目錄
-                                    dest_folder = file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + fullnewname
+                                    dest_folder = file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + full_new_name
                                     fn_rename_directory(file_model, dest_folder, job)
 
                                 if temp[0].text.strip(' \t\n\r') == 'AV女優：':
@@ -109,7 +111,7 @@ def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel, signa
                                 f.write('<span>' + temp[1].text.strip(' \t\n\r') + '</span><br>\n')
 
                     if len(actress_name_list) > 1 and all(x == actress_name_list[0] for x in actress_name_list):
-                        dest_folder = file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + fullnewname
+                        dest_folder = file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + full_new_name
                         fn_rename_directory(file_model, dest_folder, job)
                         continue
 
@@ -652,7 +654,7 @@ class myFileListWidget(QtWidgets.QWidget):
                 for idx in self.fileinfo.selectedIndexes():
                     keywords.append([self.fileinfo.model().fileName(idx), idx])
 
-            threading.Thread(target=fnWebSearching, kwargs={"keywords": keywords,
+            threading.Thread(target=fn_web_searching, kwargs={"keywords": keywords,
                                                             "file_model": file_model,
                                                             "signalMsgboxShow": self.signalMsgboxShow}).start()
 
