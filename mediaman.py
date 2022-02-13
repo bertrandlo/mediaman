@@ -141,20 +141,6 @@ def fn_rename_directory(file_model, dest_folder, job):
         QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(), dest_folder)
 
 
-def fnRename(strOldName, keyword=''):
-    '''     提供一個共通的 regular express 用來修改或尋找檔名
-    :param strOldName:
-    :param keyword:
-    :return:
-    '''
-    media_id, strNewName, m = keyword_extract(strOldName)
-
-    if keyword != '':
-        strNewName = keyword + '_' + strNewName
-
-    return strNewName
-
-
 class myQDirModel(QtWidgets.QFileSystemModel):
 
     def __init__(self, parent=None):

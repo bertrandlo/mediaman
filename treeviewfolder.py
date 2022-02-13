@@ -3,7 +3,7 @@ import logging
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtCore import Qt
 
-from mediaman import fnRename
+from utils import keyword_extract
 
 
 class TreeViewFolder(QtWidgets.QTreeView):
@@ -104,3 +104,17 @@ class TreeViewFolder(QtWidgets.QTreeView):
                 else:
                     QtCore.QDir().rename(selDirFileinfo.dir().absoluteFilePath(fnOriginal), new_file_name + '_[重複]')
                     self.parent.labelMsg.setText('[Fail] '+selDirFileinfo.dir().absoluteFilePath(newFileName))
+
+
+def fnRename(strOldName, keyword=''):
+    '''     提供一個共通的 regular express 用來修改或尋找檔名
+    :param strOldName:
+    :param keyword:
+    :return:
+    '''
+    media_id, strNewName, m = keyword_extract(strOldName)
+
+    if keyword != '':
+        strNewName = keyword + '_' + strNewName
+
+    return strNewName
