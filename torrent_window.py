@@ -30,3 +30,14 @@ class Linker:
         return "{}\t{}\t{}".format(self.date, self.seed_count, self.magnet)
 
 
+class ClickLabel(QtWidgets.QLabel):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def mouseDoubleClickEvent(self, *args, **kwargs):
+        if len(self.parent().table.selectedIndexes()) > 0:
+            idx = self.parent().table.selectedIndexes()[0]
+            #print(self.parent().seeds_list[idx.row()].content_link)
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(self.parent().seeds_list[idx.row()].content_link))
+
+
