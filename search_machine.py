@@ -21,3 +21,56 @@ def query_by_keyword(keyword, page=None):
     magnet_list = soup[0].find_all('tbody')[0].findAll('tr')
     return magnet_list
 
+
+class SearchMachine(QtCore.QObject):
+
+    signal_Searching_Keyword = QtCore.pyqtSignal(str, int)
+    signal_Download_Torrent = QtCore.pyqtSignal(str)
+    signal_Searching_Finished = QtCore.pyqtSignal()
+    signal_Page_Change = QtCore.pyqtSignal(int)
+    result = None
+    signal_Update_Label = QtCore.pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.thread_queue = queue.Queue(maxsize=1)
+        self.signal_Searching_Keyword.connect(self.searching)
+        self.signal_Page_Change.connect(lambda delta: self.searching(self.job.keyword, self.job.page + delta))
+        self.signal_Download_Torrent.connect(self.download_torrent)
+        self.result = []
+
+    @QtCore.pyqtSlot(str)
+    def download_torrent(self, url):
+        print(url)
+        r = requests.get(url)
+        r.encoding = 'utf-8'
+        # 取得對方預設的檔名
+        fn = r.headers['content-disposition'].split('filename*=UTF-8')[1].strip("''").encode('iso-8859-1').decode('utf-8', "ignore")
+
+        # faked urlretrieve header
+        opener = urllib.request.build_opener()
+        opener.addheaders = [
+            ('User-Agent', 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1941.0 Safari/537.36')]
+        urllib.request.install_opener(opener)
+        urllib.request.urlretrieve(url, 'C:\\Users\\brt\\Downloads\\'+fn)
+        QtCore.QTimer.singleShot(100, lambda: self.signal_Update_Label.emit("完成下載 "+fn))
+        bt_content = Bencode.read_file('C:\\Users\\brt\\Downloads\\' + fn)
+
+        #qfinfo = QtCore.QFileInfo(item[0])
+
+        if 'name.utf-8' in bt_content['info']:
+                print(bt_content['info']['name.utf-8'])
+                print(keyword_extract(bt_content['info']['name.utf-8']))
+        else:
+                print(bt_content['info']['name'])
+                print(keyword_extract(bt_content['info']['name']))
+
+    @QtCore.pyqtSlot(str, int)
+    def searching(self, keyword, page):
+        result = []
+        for tag in query_by_keyword(keyword, page):
+            link = Linker(tag)
+            result.append(link)
+            print(link.title, link)
+        self.signal_Searching_Finished.emit()
+        self.signal_Update_Label.emit('Page: ' + str(page))
