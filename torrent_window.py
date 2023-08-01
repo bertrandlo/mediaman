@@ -46,13 +46,19 @@ class MyTableView(QtWidgets.QTableView):
 
 class TorrentWidget(QtWidgets.QWidget):
 
-    signal_Update_Label = QtCore.pyqtSignal(str)
-    signal_Update_Window_Title = QtCore.pyqtSignal(str)
+    signal_update_label = QtCore.pyqtSignal(str)
+    signal_update_window_title = QtCore.pyqtSignal(str)
+    signal_refresh = None
+    signal_Searching_Keyword = None
+    result: queue = None
 
-    def __init__(self, parent: QtWidgets.QApplication):
+    def __init__(self, parent: QtWidgets.QApplication, result: queue, signal_refresh: QtCore.pyqtSignal,
+                 signal_searching_keyword: QtCore.pyqtSignal, **kwargs):
+        self.signal_searching_keyword = signal_searching_keyword
+        self.signal_refresh = signal_refresh
         super().__init__()
         self.seeds_list = []
-        self.result = None
+        self.result = result
         style = """
                 QWidget {
                     font-size:16px;
@@ -103,14 +109,14 @@ class TorrentWidget(QtWidgets.QWidget):
         self.showMaximized()
 
     def signal_connect(self):
+        self.signal_refresh.connect(self.on_refresh_tableview)
         self.table.pressed.connect(lambda index: self.on_table_pressed(index=index))
         self.lineeditor.returnPressed.connect(self.on_line_editor_return_press)
-        self.signal_Searching_Finished.connect(self.on_refresh_tableview)
-        self.signal_Update_Label.connect(lambda msg: self.status_label.setText(msg))
+        self.signal_update_window_title.connect(lambda msg: self.status_label.setText(msg))
         self.table.doubleClicked.connect(lambda index: self.on_table_double_click(index))
         self.btn_nextpage.clicked.connect(lambda: self.on_change_page('next'))
         self.btn_prevpage.clicked.connect(lambda: self.on_change_page('prev'))
-        self.signal_Update_Window_Title.connect(lambda msg: self.setWindowTitle('Torrent Browser Page[' + msg + ']'))
+        self.signal_update_window_title.connect(lambda msg: self.setWindowTitle('Torrent Browser Page[' + msg + ']'))
 
     def keyPressEvent(self, QKeyEvent):
         if QKeyEvent.key() == QtCore.Qt.Key_Escape:
@@ -135,42 +141,38 @@ class TorrentWidget(QtWidgets.QWidget):
 
     @QtCore.pyqtSlot()
     def on_refresh_tableview(self):
-        print('Renew Table Content')
-        try:
-            result = self.result.get(block=True, timeout=2)
-        except queue.Empty as e:
-            print('ERR Queue')
+        print("self.result =>{}".format(len(self.result.queue)))
+        if self.result is None or len(self.result.queue) == 0:
             return
-        print('Renew Table Content Result Num - {}'.format(len(result),))
 
-        #model = self.table.model()
         model = QtGui.QStandardItemModel()
         #model.clear()
         seeds_list = []
 
-        for seed_object in result:
+        for linker in list(self.result.queue):
+            print(linker)
             try:
                 #print(str(seed_object.seed_num), seed_object.size, seed_object.title)
-                item = QtGui.QStandardItem(' [S: '+str(seed_object.seed_num)+'] ' + '['+seed_object.size+']' + str(seed_object.title))
+                item = QtGui.QStandardItem(' [S: '+str(linker.seed_count)+'] ' + '['+linker.size+']' + str(linker.title))
             except AttributeError as e:
-                print(e, seed_object, type(seed_object))
+                print(e, linker, type(linker))
                 continue
 
             model.appendRow([item])
-            seeds_list.append(seed_object)
+            seeds_list.append(linker)
 
             try:
-                if seed_object.seed_num >= 20:
+                if linker.seed_count >= 20:
                     model.setData(item.index(), QtGui.QBrush(QtCore.Qt.red), QtCore.Qt.ForegroundRole)
 
-                if seed_object.seed_num < 10 and seed_object.seed_num >2:
+                if 10 > linker.seed_count > 2:
                     model.setData(item.index(), QtGui.QBrush(QtCore.Qt.darkGreen), QtCore.Qt.ForegroundRole)
 
-                if seed_object.seed_num <= 2:
+                if linker.seed_count <= 2:
                     model.setData(item.index(), QtGui.QBrush(QtCore.Qt.darkYellow), QtCore.Qt.ForegroundRole)
 
             except AttributeError as e:
-                print(seed_object, e)
+                print(linker, e)
                 continue
 
         self.result.task_done()
@@ -180,10 +182,6 @@ class TorrentWidget(QtWidgets.QWidget):
         self.table.scrollToTop()
         self.table.selectRow(0)
 
-"""
     @QtCore.pyqtSlot(object)
     def on_table_pressed(self, index: QtCore.QModelIndex):
-        model = self.table.model()
-        threading.Thread(target=PageShell_Sukebei.seed_content,
-                         args=(self.seeds_list[model.itemFromIndex(index).row()], self.result, self.signal_Update_Label)).start()
-"""
+        return
