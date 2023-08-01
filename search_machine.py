@@ -48,22 +48,20 @@ def query_by_keyword(keyword, page=None):
     return magnet_list
 
 
-class SearchMachine(QtCore.QObject):
+class SearchMachine(QtCore.QThread):
 
-    signal_Searching_Keyword = QtCore.pyqtSignal(str, int)
-    signal_Download_Torrent = QtCore.pyqtSignal(str)
-    signal_Searching_Finished = QtCore.pyqtSignal()
-    signal_Page_Change = QtCore.pyqtSignal(int)
-    result = None
-    signal_Update_Label = QtCore.pyqtSignal(str)
+    result = Queue()
+    signal_searching_keyword = QtCore.pyqtSignal(str, int)
+    signal_searching_finished = QtCore.pyqtSignal()
+    signal_page_change = QtCore.pyqtSignal(int)
+    signal_update_label = QtCore.pyqtSignal(str)
+    signal_refresh = QtCore.pyqtSignal()
+    flag_exit = Event()
 
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
-        self.thread_queue = queue.Queue(maxsize=1)
-        self.signal_Searching_Keyword.connect(self.searching)
-        self.signal_Page_Change.connect(lambda delta: self.searching(self.job.keyword, self.job.page + delta))
-        self.signal_Download_Torrent.connect(self.download_torrent)
-        self.result = []
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # self.signal_page_change.connect(lambda delta: self.searching(self.job.keyword, self.job.page + delta))
+        self.signal_searching_keyword.connect(self.searching)
 
     @QtCore.pyqtSlot(str)
     def download_torrent(self, url):
@@ -92,11 +90,20 @@ class SearchMachine(QtCore.QObject):
                 print(keyword_extract(bt_content['info']['name']))
 
     @QtCore.pyqtSlot(str, int)
-    def searching(self, keyword, page):
-        result = []
+    def searching(self, keyword, page=1):
+        self.result.empty()
+
         for tag in query_by_keyword(keyword, page):
             link = Linker(tag)
-            result.append(link)
-            print(link.title, link)
-        self.signal_Searching_Finished.emit()
-        self.signal_Update_Label.emit('Page: ' + str(page))
+            self.result.put_nowait(link)
+
+        self.signal_refresh.emit()
+
+    def run(self) -> None:
+        while True:
+            if self.flag_exit.isSet():
+                break
+
+            time.sleep(0.05)
+
+        print("Searching Thread EXIT")
