@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 
 from PyQt5 import QtCore, QtWidgets, QtGui
@@ -146,20 +147,21 @@ class TorrentWidget(QtWidgets.QWidget):
             return
 
         model = QtGui.QStandardItemModel()
-        #model.clear()
+        model.clear()
         seeds_list = []
 
-        for linker in list(self.result.queue):
-            print(linker)
+        while not self.result.empty():
+            linker = self.result.get()
             try:
                 #print(str(seed_object.seed_num), seed_object.size, seed_object.title)
-                item = QtGui.QStandardItem(' [S: '+str(linker.seed_count)+'] ' + '['+linker.size+']' + str(linker.title))
+                item = QtGui.QStandardItem('{} [S:{}][{}] {}'.format(
+                    linker.date.strftime('%Y-%m-%d'), linker.seed_count, linker.size, linker.title))
             except AttributeError as e:
                 print(e, linker, type(linker))
                 continue
 
             model.appendRow([item])
-            seeds_list.append(linker)
+            seeds_list.append(linker.magnet)
 
             try:
                 if linker.seed_count >= 20:
