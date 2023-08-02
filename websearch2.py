@@ -28,7 +28,7 @@ def main():
     widget.thread().setObjectName('main thread')
 
     widget.signal_connect()
-    search_vm.signal_searching_keyword.emit('渋谷華', 1)
+    search_vm.signal_searching_keyword.emit('', 1)
 
     widget.show()
 
