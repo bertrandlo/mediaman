@@ -123,17 +123,12 @@ class TorrentWidget(QtWidgets.QWidget):
         if QKeyEvent.key() == QtCore.Qt.Key_Escape:
             self.showMinimized()
 
-    def on_change_page(self, action):
-        if action == 'prev':
-            self.signal_Page_Change.emit(-1)
-        if action == 'next':
-            self.signal_Page_Change.emit(1)
-
     @QtCore.pyqtSlot(object)
     def on_table_double_click(self, index: QtCore.QModelIndex):
-        download_link = (self.seeds_list[self.table.model().itemFromIndex(index).row()]).download_link
-        print(download_link)
-        self.signal_Download_Torrent.emit(download_link)
+        magnet_link = self.seeds_list[self.table.model().itemFromIndex(index).row()]
+        print(magnet_link)
+        os.startfile(magnet_link)
+        # self.signal_Download_Torrent.emit(download_link)
 
         #keyword_extract(item[0])
 
