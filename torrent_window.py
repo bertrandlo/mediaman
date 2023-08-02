@@ -119,13 +119,25 @@ class TorrentWidget(QtWidgets.QWidget):
         self.lineeditor.returnPressed.connect(lambda: self.on_lineeditor_ReturnPressed())
         self.signal_update_window_title.connect(lambda msg: self.status_label.setText(msg))
         self.table.doubleClicked.connect(lambda index: self.on_table_double_click(index))
-        self.btn_nextpage.clicked.connect(lambda: self.on_change_page('next'))
-        self.btn_prevpage.clicked.connect(lambda: self.on_change_page('prev'))
+        self.btn_nextpage.clicked.connect(self.show_next_page)
+        self.btn_prevpage.clicked.connect(self.show_previous_page)
         self.signal_update_window_title.connect(lambda msg: self.setWindowTitle('Torrent Browser Page[' + msg + ']'))
 
     def on_lineeditor_ReturnPressed(self):
         self.page = 1
         self.keyword = self.lineeditor.text()
+        self.signal_searching_keyword.emit(self.keyword, self.page)
+
+    @QtCore.pyqtSlot()
+    def show_next_page(self):
+        self.page = self.page + 1
+        self.signal_searching_keyword.emit(self.keyword, self.page)
+
+    @QtCore.pyqtSlot()
+    def show_previous_page(self):
+        self.page = self.page - 1
+        if self.page < 1:
+            self.page = 1
         self.signal_searching_keyword.emit(self.keyword, self.page)
 
     def keyPressEvent(self, QKeyEvent):
