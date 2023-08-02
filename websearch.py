@@ -262,10 +262,13 @@ class TorrentWidget(QtWidgets.QWidget):
             seeds_list.append(seed_object)
 
             try:
-                if seed_object.seed_num >= 20:
+                if seed_object.seed_num >= 50:
                     model.setData(item.index(), QtGui.QBrush(Qt.red), Qt.ForegroundRole)
 
-                if seed_object.seed_num < 10 and seed_object.seed_num >2:
+                if 50 > seed_object.seed_num > 10:
+                    model.setData(item.index(), QtGui.QBrush(Qt.darkBlue), Qt.ForegroundRole)
+
+                if 10 > seed_object.seed_num > 2:
                     model.setData(item.index(), QtGui.QBrush(Qt.darkGreen), Qt.ForegroundRole)
 
                 if seed_object.seed_num <= 2:

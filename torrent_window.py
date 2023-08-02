@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 
 from PyQt5 import QtCore, QtWidgets, QtGui
@@ -51,6 +52,8 @@ class TorrentWidget(QtWidgets.QWidget):
     signal_refresh = None
     signal_Searching_Keyword = None
     result: queue = None
+    page = None
+    keyword = None
 
     def __init__(self, parent: QtWidgets.QApplication, result: queue, signal_refresh: QtCore.pyqtSignal,
                  signal_searching_keyword: QtCore.pyqtSignal, **kwargs):
@@ -107,32 +110,46 @@ class TorrentWidget(QtWidgets.QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.verticalHeader().setStyleSheet(style)
         self.showMaximized()
+        self.page = 1
+        self.keyword = ''
 
     def signal_connect(self):
         self.signal_refresh.connect(self.on_refresh_tableview)
         self.table.pressed.connect(lambda index: self.on_table_pressed(index=index))
-        self.lineeditor.returnPressed.connect(self.on_line_editor_return_press)
+        self.lineeditor.returnPressed.connect(lambda: self.on_lineeditor_ReturnPressed())
         self.signal_update_window_title.connect(lambda msg: self.status_label.setText(msg))
         self.table.doubleClicked.connect(lambda index: self.on_table_double_click(index))
-        self.btn_nextpage.clicked.connect(lambda: self.on_change_page('next'))
-        self.btn_prevpage.clicked.connect(lambda: self.on_change_page('prev'))
+        self.btn_nextpage.clicked.connect(self.show_next_page)
+        self.btn_prevpage.clicked.connect(self.show_previous_page)
         self.signal_update_window_title.connect(lambda msg: self.setWindowTitle('Torrent Browser Page[' + msg + ']'))
+
+    def on_lineeditor_ReturnPressed(self):
+        self.page = 1
+        self.keyword = self.lineeditor.text()
+        self.signal_searching_keyword.emit(self.keyword, self.page)
+
+    @QtCore.pyqtSlot()
+    def show_next_page(self):
+        self.page = self.page + 1
+        self.signal_searching_keyword.emit(self.keyword, self.page)
+
+    @QtCore.pyqtSlot()
+    def show_previous_page(self):
+        self.page = self.page - 1
+        if self.page < 1:
+            self.page = 1
+        self.signal_searching_keyword.emit(self.keyword, self.page)
 
     def keyPressEvent(self, QKeyEvent):
         if QKeyEvent.key() == QtCore.Qt.Key_Escape:
             self.showMinimized()
 
-    def on_change_page(self, action):
-        if action == 'prev':
-            self.signal_Page_Change.emit(-1)
-        if action == 'next':
-            self.signal_Page_Change.emit(1)
-
     @QtCore.pyqtSlot(object)
     def on_table_double_click(self, index: QtCore.QModelIndex):
-        download_link = (self.seeds_list[self.table.model().itemFromIndex(index).row()]).download_link
-        print(download_link)
-        self.signal_Download_Torrent.emit(download_link)
+        magnet_link = self.seeds_list[self.table.model().itemFromIndex(index).row()]
+        print(magnet_link)
+        os.startfile(magnet_link)
+        # self.signal_Download_Torrent.emit(download_link)
 
         #keyword_extract(item[0])
 
@@ -146,20 +163,21 @@ class TorrentWidget(QtWidgets.QWidget):
             return
 
         model = QtGui.QStandardItemModel()
-        #model.clear()
+        model.clear()
         seeds_list = []
 
-        for linker in list(self.result.queue):
-            print(linker)
+        while not self.result.empty():
+            linker = self.result.get()
             try:
                 #print(str(seed_object.seed_num), seed_object.size, seed_object.title)
-                item = QtGui.QStandardItem(' [S: '+str(linker.seed_count)+'] ' + '['+linker.size+']' + str(linker.title))
+                item = QtGui.QStandardItem('{} [S:{}][{}] {}'.format(
+                    linker.date.strftime('%Y-%m-%d'), linker.seed_count, linker.size, linker.title))
             except AttributeError as e:
                 print(e, linker, type(linker))
                 continue
 
             model.appendRow([item])
-            seeds_list.append(linker)
+            seeds_list.append(linker.magnet)
 
             try:
                 if linker.seed_count >= 20:
