@@ -1,32 +1,42 @@
-#-*- coding: utf-8 -*-
-import sys, os, re, threading, logging, requests, tempfile, pickle, subprocess
-from urllib3.exceptions import InsecureRequestWarning
-import catalogman
-
-from utils import keyword_extract
+import logging
+import multiprocessing
+import os
+import random
+import requests
+import string
+import sys
+import tempfile
+import threading
 
 from PyQt5 import QtGui, QtCore, QtWidgets
-from PyQt5.QtCore import Qt                 # some flags definition
-from send2trash import send2trash
+from PyQt5.QtCore import Qt  # some flags definition
 from bs4 import BeautifulSoup
+from send2trash import send2trash
+from urllib3.exceptions import InsecureRequestWarning
+
+import ffmpeg_ui
+import managepanel
+import websearch
+from treeviewfolder import TreeViewFolder
+from utils import keyword_extract
 
 
-def GetHumanReadable(size, precision=1):
-    suffixes=['B', 'KB', 'MB', 'GB', 'TB']
-    suffixIndex = 0
-    while size > 1024 and suffixIndex < 4:
-        suffixIndex += 1 #increment the index of the suffix
-        size = size/1024.0 #apply the division
-    return "%.*f%s" % (precision, size, suffixes[suffixIndex])
+def get_human_readable(size, precision=1):
+    suffixes = ['B', 'KB', 'MB', 'GB', 'TB']
+    suffix_index = 0
+    while size > 1024 and suffix_index < 4:
+        suffix_index += 1  # increment the index of the suffix
+        size = size/1024.0  # apply the division
+    return "%.*f%s" % (precision, size, suffixes[suffix_index])
 
 
-def removeDir(dirName):
+def remove_dir(dirName):
     result = True
     qdir = QtCore.QDir(dirName)
     if qdir.exists(dirName):
         for info in qdir.entryInfoList(QtCore.QDir.NoDotAndDotDot | QtCore.QDir.System | QtCore.QDir.Hidden | QtCore.QDir.AllDirs | QtCore.QDir.Files, QtCore.QDir.DirsFirst):
             if info.isDir():
-                result = removeDir(info.absoluteFilePath())
+                result = remove_dir(info.absoluteFilePath())
             else:
                 result = QtCore.QFile().remove(info.absoluteFilePath())
 
@@ -37,18 +47,26 @@ def removeDir(dirName):
     return result
 
 
-def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel):
-    #urllib3.disable_warnings()
+def fn_web_searching(keywords: list, file_model: QtWidgets.QFileSystemModel, signal_msgbox_show):
+    """
+    搜尋 https://www.arzon.jp 並依據結果 直接更改目錄名稱 或 顯示結果
+    :param keywords:
+    :param file_model:
+    :param signal_msgbox_show: 顯示訊息對應的信號物件
+    :return:
+    """
+    # urllib3.disable_warnings()
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
     for job in keywords:
-        keyword, fullnewname, m = keyword_extract(job[0])
+        keyword, full_new_name, m = keyword_extract(job[0])
         print(file_model.fileInfo(job[1]).absoluteFilePath(), keyword)
 
         if m:
             db_url = "https://www.arzon.jp"
             session = requests.session()
             r = session.get(
-                db_url + '/index.php?action=adult_customer_agecheck&agecheck=1&redirect=https%3A%2F%2Fwww.arzon.jp%2Fitemlist.html%3Ft%3D%26m%3Dall%26s%3D%26q%3D' + keyword,
+                db_url + '/index.php?action=adult_customer_agecheck&agecheck=1&redirect=https%3A%2F%2Fwww.arzon.jp'
+                         '%2Fitemlist.html%3Ft%3D%26m%3Dall%26s%3D%26q%3D' + keyword,
                 verify=False)
             r.encoding = 'utf-8'
             soup = BeautifulSoup(r.text, "html.parser")
@@ -76,11 +94,11 @@ def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel):
                                     else:
                                         actress_name = temp[1].text.strip(' \t\n\r')
 
-                                    print(actress_name, keyword, fullnewname)
+                                    print(actress_name, keyword, full_new_name)
 
-                                    QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(),
-                                        file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + fullnewname)
-
+                                    # 檢查是否有重複目錄
+                                    dest_folder = file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + full_new_name
+                                    fn_rename_directory(file_model, dest_folder, job)
 
                                 if temp[0].text.strip(' \t\n\r') == 'AV女優：':
                                     if not temp[1].text.strip(' \t\n\r'):
@@ -94,12 +112,12 @@ def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel):
                                 f.write('<span>' + temp[1].text.strip(' \t\n\r') + '</span><br>\n')
 
                     if len(actress_name_list) > 1 and all(x == actress_name_list[0] for x in actress_name_list):
-                        QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(),
-                                             file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + fullnewname)
+                        dest_folder = file_model.fileInfo(job[1]).absolutePath() + QtCore.QDir.separator() + actress_name + '_' + full_new_name
+                        fn_rename_directory(file_model, dest_folder, job)
                         continue
 
                 os.close(tmp[0])
-                if len(video_item) > 1 or actress_name == '素人' or len(actress_name.splitlines()) > 1: # 多於一位主演
+                if len(video_item) > 1 or actress_name == '素人' or len(actress_name.splitlines()) > 1:  # 多於一位主演
                     QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(tmp[1]))
             else:
                 QtGui.QDesktopServices.openUrl(
@@ -109,117 +127,18 @@ def fnWebSearching(keywords: list, file_model: QtWidgets.QFileSystemModel):
                 QtCore.QUrl('https://www.google.com.tw/?q=' + keyword + '&lr=lang_zh-TW#q=' + keyword + '&tabs=0'))
 
 
-def fnRename(strOldName, keyword=''):
-    '''     提供一個共通的 regular express 用來修改或尋找檔名
-    :param strOldName:
-    :param keyword:
-    :return:
-    '''
-    media_id, strNewName, m = keyword_extract(strOldName)
+def fn_rename_directory(file_model, dest_folder, job):
 
-    if keyword != '':
-        strNewName = keyword + '_' + strNewName
+    if QtCore.QDir(dest_folder).exists():
 
-    return strNewName
+        # QtWidgets.QMessageBox('重複目錄名稱-'+dest_folder)
+        # signalMsgboxShow.emit('重複目錄名稱 - '+dest_folder)
+        appendixStr = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(4))
+        QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(), dest_folder + '-[重複]' + appendixStr)
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl().fromLocalFile(dest_folder))
 
-
-class treeviewFolder(QtWidgets.QTreeView):
-
-    def __init__(self, parent):
-        '''
-         當 treeview widget 與 QFilesystemModel 連結後 只需要設定
-            setDragDropMode, setDragEnabled, setAcceptDrops, setDropIndicatorShown, setDefaultDropAction
-            剩下的 treeview 會自己處理 dropEvent dragEnterEvent
-            但使用者如果自行需要修改 這兩個事件 必須利用 super(userClassName, self).dropEvent(event)
-            讓原本的自動動作執行而非直接覆寫這些事件處理函數
-        :param parent:
-        :return:
-        '''
-        super().__init__()
-        self.parent = parent
-
-        self.setDragDropMode(QtWidgets.QAbstractItemView.DragDrop)
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.setDragDropOverwriteMode(True)
-        self.setDropIndicatorShown(True)
-        self.setDefaultDropAction(Qt.CopyAction)
-        self.setEditTriggers(QtWidgets.QAbstractItemView.EditKeyPressed)
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.setSelectionMode(self.ExtendedSelection)
-        self.customContextMenuRequested.connect(self.customCxMenuEvent)
-
-    def dragEnterEvent(self, event):
-        logging.debug('Drag - ' + event.mimeData().text())
-        if 'application/x-qt-windows-mime;value="FileName"' in event.mimeData().formats():
-            event.acceptProposedAction()
-            super().dragEnterEvent(event)   # 呼叫父類別方法
-        else:                               # 純文字的拖入處理
-            if 'text/plain' in event.mimeData().formats():
-                self.setAcceptDrops(True)
-                QtWidgets.QApplication.clipboard().setText(event.mimeData().text())
-                logging.debug('Drag Enter')
-                event.accept()
-
-    def dragMoveEvent(self, event):
-        #logging.debug('Drag - ' + event.mimeData().text())
-        if 'application/x-qt-windows-mime;value="FileName"' in event.mimeData().formats():
-            event.acceptProposedAction()
-            super().dragMoveEvent(event)   # 呼叫父類別方法
-        else:                               # 純文字的拖入處理
-            if 'text/plain' in event.mimeData().formats():
-                event.accept()
-
-    def dropEvent(self, event):
-        logging.debug('Drop - ' + event.mimeData().text())
-        if 'application/x-qt-windows-mime;value="FileName"' in event.mimeData().formats():
-            super().dropEvent(event)
-        else:
-            idx = self.indexAt(self.viewport().mapFromGlobal(QtGui.QCursor.pos()))
-            fn = self.model().fileName(idx)
-
-            if fn == '':  # 檢查是否有點選在項目上才顯示選單
-                msgbox = QtWidgets.QMessageBox(icon=QtWidgets.QMessageBox.Warning, text='請指定正確目錄')
-                msgbox.setWindowFlags(Qt.Popup)
-                msgbox.exec()
-            else:
-                QtWidgets.QApplication.clipboard().setText(event.mimeData().text())
-                strNewName = fnRename(fn, event.mimeData().text())
-                if strNewName != fn:
-                    result = QtCore.QDir().rename(self.model().fileInfo(idx).dir().absoluteFilePath(fn),
-                                           self.model().fileInfo(idx).dir().absoluteFilePath(strNewName))
-                    if result:
-                        self.parent.labelMsg.setText('[OK] ' + self.model().fileInfo(idx).dir().absoluteFilePath(strNewName))
-                    else:
-                        self.parent.labelMsg.setText('[Fail] ' + self.model().fileInfo(idx).dir().absoluteFilePath(strNewName))
-
-                event.acceptProposedAction()
-
-    def customCxMenuEvent(self, pos): #右鍵選單 - TreeView Widget
-
-        if self.model().fileName(self.indexAt(self.viewport().mapFromGlobal(QtGui.QCursor.pos()))) == '':    #檢查是否有點選在項目上才顯示選單
-            return
-
-        cxmenu = QtWidgets.QMenu()
-        act1 = QtWidgets.QAction('整理', self)
-        cxmenu.addAction(act1)
-        action = cxmenu.exec_(self.viewport().mapToGlobal(pos))
-
-        if action == act1:
-            selDirFileinfo = self.model().fileInfo(self.currentIndex())
-            fnOriginal = self.model().fileName(self.currentIndex())
-            newFileName = fnRename(fnOriginal)
-
-            if(len(QtGui.QGuiApplication.clipboard().text()) > 0):
-                newFileName = QtGui.QGuiApplication.clipboard().text() + '_' + newFileName
-
-            if fnOriginal != newFileName:
-
-                result = QtCore.QDir().rename(selDirFileinfo.dir().absoluteFilePath(fnOriginal), selDirFileinfo.dir().absoluteFilePath(newFileName))
-                if result:
-                    self.parent.labelMsg.setText('[OK] '+selDirFileinfo.dir().absoluteFilePath(newFileName))
-                else:
-                    self.parent.labelMsg.setText('[Fail] '+selDirFileinfo.dir().absoluteFilePath(newFileName))
+    else:
+        QtCore.QDir().rename(file_model.fileInfo(job[1]).absoluteFilePath(), dest_folder)
 
 
 class myQDirModel(QtWidgets.QFileSystemModel):
@@ -339,7 +258,10 @@ class myFileListWidget(QtWidgets.QWidget):
     #myModel.setRootPath(QtCore.QDir.currentPath())
     keypressed = QtCore.pyqtSignal(QtGui.QKeyEvent)
     revItemSrc = None
-    settings = QtCore.QSettings("candy", "brt")                # Registry Current_USER\Software\Candy\brt
+    #settings = QtCore.QSettings("candy", "brt")                # Registry Current_USER\Software\Candy\brt
+    settings = QtCore.QSettings("settings.ini", QtCore.QSettings.IniFormat)
+
+    signal_msgbox_show = QtCore.pyqtSignal(str)
 
     def __init__(self, app):
         super().__init__()
@@ -353,9 +275,9 @@ class myFileListWidget(QtWidgets.QWidget):
         self.setAttribute(Qt.WA_DeleteOnClose)          #讓QT在最後一個視窗關閉時 自動清除全部 thread
 
         self.setWindowIcon(QtGui.QIcon(os.path.join(os.path.dirname(sys.modules[__name__].__file__), 'icon.ico')))
-        self.location = QtCore.QDir(self.settings.value("location", QtCore.QDir.homePath()))
+        self.location = QtCore.QDir(self.settings.value("home", 'C:/Users/brt/Desktop/storage/BT/00-下載中'))
 
-        self.myModel.setRootPath(self.settings.value("location", QtCore.QDir.homePath()))
+        self.myModel.setRootPath(self.settings.value("home", 'C:/Users/brt/Desktop/storage/BT/00-下載中'))
         style = """
                 QWidget {
                     font-size:16px;
@@ -375,6 +297,8 @@ class myFileListWidget(QtWidgets.QWidget):
                     background-color: #666;
                 }
                 
+                QMessageBox { messagebox-text-interaction-flags: 5; }
+                
                 QPushButton, QLineEdit {
                 font-size:16px;
                 border: 2px solid #8f8f91; border-width:1px; 
@@ -389,7 +313,10 @@ class myFileListWidget(QtWidgets.QWidget):
                 """
         self.setStyleSheet(style)
 
-        treeview = treeviewFolder(self)
+        self.msgbox = QtWidgets.QMessageBox(self)
+        self.msgbox.hide()
+
+        treeview = TreeViewFolder(self)
         treeview.setModel(self.myModel)
 
         treeview.setStyleSheet(style)
@@ -405,7 +332,7 @@ class myFileListWidget(QtWidgets.QWidget):
         fileinfo = filetable()
         fileinfo.setStyleSheet(style)
         fileinfo.setModel(myQDirModel())
-        fileinfo.model().setRootPath(QtCore.QDir.homePath())
+        fileinfo.model().setRootPath(self.settings.value("home", 'C:/Users/brt/Desktop/storage/BT/00-下載中'))
         fileinfo.model().setFilter(QtCore.QDir.Files|QtCore.QDir.NoDotAndDotDot|QtCore.QDir.CaseSensitive)
         fileinfo.setRootIndex(fileinfo.model().index(self.location.absolutePath()))
         fileinfo.verticalHeader().setVisible(False)
@@ -436,7 +363,7 @@ class myFileListWidget(QtWidgets.QWidget):
         labelMsg.setStyleSheet("font-size: 14px;")
         self.labelMsg = labelMsg
 
-        btnSearch = QtWidgets.QPushButton("Search")
+        btnSearch = QtWidgets.QPushButton("Database")
         btnSearch.setStyleSheet(style)
         btnWebService = QtWidgets.QPushButton("Web")
         btnWebService.setStyleSheet(style)
@@ -475,9 +402,9 @@ class myFileListWidget(QtWidgets.QWidget):
         btnHome.clicked.connect(lambda: self.fnBtnHomeClick(locationline))
 
         #btnSearch.clicked.connect(lambda: self.win['searching'].show())
-        btnSearch.clicked.connect(lambda: subprocess.Popen([sys.executable, os.path.dirname(sys.argv[0]) + "/managepanel.py"]))
-        btnWebService.clicked.connect(lambda: subprocess.Popen([sys.executable, os.path.dirname(sys.argv[0]) + "/websearch.py"]))
-        btnFileConvert.clicked.connect(lambda: subprocess.Popen([sys.executable, os.path.dirname(sys.argv[0]) + "/ffmpeg_ui.py"]))
+        btnSearch.clicked.connect(lambda: multiprocessing.Process(target=managepanel.main, daemon=True).start())
+        btnWebService.clicked.connect(lambda: multiprocessing.Process(target=websearch.main, daemon=True).start())
+        btnFileConvert.clicked.connect(lambda: multiprocessing.Process(target=ffmpeg_ui.main, daemon=True).start())
 
         locationline.returnPressed.connect(self.fnManualLocation)
         nameline.returnPressed.connect(self.fnItemRevName)
@@ -486,9 +413,16 @@ class myFileListWidget(QtWidgets.QWidget):
         fileinfo.doubleClicked.connect(lambda index: self.fnTableWidgetDbClick(index))
         fileinfo.clicked.connect(lambda index: self.fnShowFileBaseName(index, nameline))
 
+        self.signal_msgbox_show.connect(lambda msg: self.fnShowMsg(msg), QtCore.Qt.QueuedConnection)
+
         self.fnManualLocation()
         self.win = {}
         #self.win['searching'] = catalogman.searchWidget(self)
+
+    @QtCore.pyqtSlot(str)
+    def fnShowMsg(self, msg):
+        self.msgbox.setText(msg)
+        self.msgbox.show()
 
     def fnShowDirectoryinFinder(self, index):
         QtGui.QDesktopServices.openUrl(QtCore.QUrl().fromLocalFile(self.myModel.filePath(index)))
@@ -568,8 +502,8 @@ class myFileListWidget(QtWidgets.QWidget):
         self.keypressed.emit(QKeyEvent)
 
     def fnBtnHomeClick(self, locationline):
-        self.location.cd('A:')
-        locationline.setText('')
+        self.location.cd('C:/Users/brt/Desktop/storage/BT/00-下載中')
+        locationline.setText('C:/Users/brt/Desktop/storage/BT/00-下載中')
         self.fnManualLocation()
         self.treeview.setFocus()
 
@@ -592,7 +526,7 @@ class myFileListWidget(QtWidgets.QWidget):
                 for item in clipboard.mimeData().urls():
                     logging.debug(item)
 
-        if keyevent.key() == Qt.Key_F4:  #網頁搜尋 番號  + "演出" <- 需要 urlencoding
+        if keyevent.key() == Qt.Key_F4:  # F4  網頁搜尋 番號  + "演出" <- 需要 urlencoding
 
             keywords = []
 
@@ -607,9 +541,12 @@ class myFileListWidget(QtWidgets.QWidget):
                 for idx in self.fileinfo.selectedIndexes():
                     keywords.append([self.fileinfo.model().fileName(idx), idx])
 
-            threading.Thread(target=fnWebSearching, kwargs={"keywords": keywords, "file_model": file_model}).start()
+            threading.Thread(target=fn_web_searching, kwargs={"keywords": keywords,
+                                                            "file_model": file_model,
+                                                            "signal_msgbox_show": self.signal_msgbox_show}).start()
 
         if keyevent.key() == Qt.Key_Delete:
+            from pathlib import Path
             self.revItemSrc = self.focusWidget()
 
             if self.focusWidget() == self.treeview:         #刪除目錄
@@ -621,16 +558,20 @@ class myFileListWidget(QtWidgets.QWidget):
 
                 if qdir.exists():
                     self.treeview.setCurrentIndex(self.treeview.model().index(idx.row(), 0, idx.parent()))
-                    threading.Thread(target=send2trash, kwargs={"path": qdir.absolutePath()}).start()    #利用執行緒進行刪除工作 避免UI停頓
+                    threading.Thread(target=send2trash, kwargs={"path": str(Path(qdir.absolutePath()))}).start()    #利用執行緒進行刪除工作 避免UI停頓
                     self.fnShowSubDir(self.treeview.currentIndex())
                     self.labelMsg.setText('[DELETE]'+qdir.absolutePath())
                     logging.debug('[DELETE]'+qdir.absolutePath())
 
             if self.focusWidget() == self.fileinfo:         #刪除檔案
+
                 print('刪除檔案')
                 delFileListIndex = self.fileinfo.selectedIndexes()
                 for idx in delFileListIndex:
-                    threading.Thread(target=send2trash, kwargs={"path": self.fileinfo.model().fileInfo(idx).absoluteFilePath()}).start()
+                    threading.Thread(target=send2trash,
+                                     kwargs={"path": str(Path(self.fileinfo.model().fileInfo(idx).absoluteFilePath()))}).start()
+                    #Path(self.fileinfo.model().fileInfo(idx).absoluteFilePath()).unlink()
+                    #send2trash(str(Path(self.fileinfo.model().fileInfo(idx).absoluteFilePath())))
                     self.labelMsg.setText('[DELETE]'+self.fileinfo.model().fileInfo(idx).absoluteFilePath())
                     logging.debug('[DELETE]'+self.fileinfo.model().fileInfo(idx).absoluteFilePath())
 
@@ -692,7 +633,7 @@ class myFileListWidget(QtWidgets.QWidget):
                 except:
                     break
                 newItem = [QtWidgets.QTableWidgetItem(item.fileName()),
-                           QtWidgets.QTableWidgetItem(GetHumanReadable(item.size())),
+                           QtWidgets.QTableWidgetItem(get_human_readable(item.size())),
                            QtWidgets.QTableWidgetItem(item.lastModified().toString(Qt.ISODate))]
                 fileinfo.setItem(x, 0, newItem[0])
                 fileinfo.setItem(x, 1, newItem[1])
@@ -721,7 +662,7 @@ class myFileListWidget(QtWidgets.QWidget):
 
         # 檢查目錄所在磁碟可用容量
 
-        self.labelMsg.setText("可用容量 - " + GetHumanReadable(QtCore.QStorageInfo(self.location.absolutePath()).bytesAvailable()))
+        self.labelMsg.setText("可用容量 - " + get_human_readable(QtCore.QStorageInfo(self.location.absolutePath()).bytesAvailable()))
 
     def fnManualLocation(self):
         locationline = self.layout().itemAtPosition(0, 2).widget()
@@ -732,7 +673,6 @@ class myFileListWidget(QtWidgets.QWidget):
 
 
 def main():
-    print("TEST")
     logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
     app = QtWidgets.QApplication(sys.argv)
@@ -744,4 +684,5 @@ def main():
     sys.exit(app.exec_())
 
 if __name__ == '__main__':
+    multiprocessing.freeze_support()
     main()

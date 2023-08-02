@@ -1,4 +1,3 @@
-#-*- coding: utf-8 -*-
 import sys, os, re, logging, time, copy
 from threading import Thread
 from PyQt5.QtCore import *

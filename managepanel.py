@@ -1,20 +1,48 @@
 # -*- coding: utf-8 -*-
-import os
-import sys
-import logging
-import sqlite3
+# 處理所有硬碟影片檔案索引
+# 規劃設計了一個 CoreMachine 類別處理所有的工作 UI Singal Connect 交待工作
+import copy
 import datetime
 import itertools
-import threading
+import json
+import logging
+import os
+import pathlib
 import queue
-import time
-import copy
-from PyQt5 import QtCore, QtGui, QtWidgets
+import sqlite3
+import sys
+import tempfile
+import threading
+
+from PyQt5 import QtCore, QtGui, QtWidgets, QtWebEngineWidgets
+from jinja2 import Environment, PackageLoader
 
 import tree
 
-db_location = 'C://Users//brt//Desktop//files.db'
+db_location = pathlib.Path(__file__).parent.resolve() / 'files.db'
 disk_set = []
+
+cssStyle = """
+        QWidget {
+            font-size:16px;
+            color: #aaa;
+            border: 2px solid; 
+            border-width:1px; 
+            border-style: solid;
+            background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #222, stop: 1 #333);
+            min-height:24px; 
+        }
+        QHeaderView::section {
+            background-color: #000000;
+        }
+        QTableView {
+            border-radius:8px;
+            background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #222, stop: 1 #333);
+        }
+        QTableView::item:selected {
+            background-color: #555555;
+        }
+        """
 
 def GetHumanReadable(size, precision=1):
     suffixes = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -23,12 +51,12 @@ def GetHumanReadable(size, precision=1):
         while size > 1024 and suffixIndex < 4:
             suffixIndex += 1 #increment the index of the suffix
             size = size/1024.0 #apply the division
-        return "%.*f%s" % (precision,size,suffixes[suffixIndex])
+        return "%.*f%s" % (precision, size, suffixes[suffixIndex])
     else:
         return 'No File Size Data'
 
 
-def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, label, signal_JobFinished = None):
+def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, label, path, signal_JobFinished :QtCore.pyqtSignal(str)):
     semaphore.acquire()
     conn = sqlite3.connect(db_location)
     cur = conn.cursor()
@@ -37,7 +65,10 @@ def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, l
     if len(cur.execute("SELECT * FROM disk WHERE label = ?", [label]).fetchall()) > 0:
         disk_info = cur.execute("SELECT * FROM disk WHERE label = ?", [label]).fetchall()[0]
         disk_id = disk_info[0]
-        scan_path = disk_info[2]
+
+    scan_path = path
+
+    conn.close()
 
     # 清除相同 disk_id 的紀錄
     sql_cmd_queue.put(("DELETE FROM files WHERE disk_id = ?", (copy.copy(disk_id),)))
@@ -49,7 +80,7 @@ def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, l
         for filename in files:
 
             try:
-                file_size = os.stat(os.path.join(root, filename)).st_size # in bytes
+                file_size = os.stat(os.path.join(root, filename)).st_size    # in bytes
             except FileNotFoundError:
                 continue
             except OSError as e:  # 有問題的檔名或目錄名稱 --> 不處理
@@ -64,14 +95,15 @@ def scan_directory(semaphore: threading.Semaphore, sql_cmd_queue: queue.Queue, l
             sql_cmd_queue.put(("INSERT INTO files VALUES (?, ?, ?, ?)", (root, '', disk_id, 0)))
             count += 1
 
-    sql_cmd_queue.put(("COMMIT",), block=False)
+
     print("Files Count = " + str(count))
 
-    space_available = GetHumanReadable(QtCore.QStorageInfo(scan_path).bytesAvailable()) + '/' + \
-        GetHumanReadable(QtCore.QStorageInfo(scan_path).bytesTotal())
+    space_available = json.dumps([QtCore.QStorageInfo(scan_path).bytesAvailable(), QtCore.QStorageInfo(scan_path).bytesTotal()])
+    print(label + ' - SPACE - ' + space_available)
     check_date = datetime.datetime.now().strftime("%Y%m%d %H%M%S")
-    sql_cmd_queue.put(("UPDATE disk SET space_available = ? , check_date = ? WHERE disk_id = ?", copy.copy((space_available, check_date, disk_id))))
 
+    sql_cmd_queue.put(("UPDATE disk SET space_available = ? , check_date = ? WHERE disk_id = ?", (space_available, check_date, disk_id)))
+    sql_cmd_queue.put(("COMMIT",), block=False)
     print(label + " os.walk() Finished")
     signal_JobFinished.emit(label + " os.walk() Finished")
     semaphore.release()
@@ -98,13 +130,13 @@ class SQLExecuter(QtCore.QObject):
             self.flag_exit = True
 
     def wait(self):
-        conn = sqlite3.connect('C://Users//brt//Desktop//files.db')
+        conn = sqlite3.connect(db_location)
         cur = conn.cursor()
         count = 0
 
         while not self.flag_exit:
             try:
-                cmd = self.sql_cmd_queue.get(block=True, timeout=0.01)
+                cmd = self.sql_cmd_queue.get(block=True, timeout=0.001)
                 if cmd[0] == 'COMMIT':
                     conn.commit()
                 else:
@@ -118,11 +150,13 @@ class SQLExecuter(QtCore.QObject):
         conn.close()
 
 
-class TblWidget(QtWidgets.QTableWidget):
+class TblWidget(QtWidgets.QTableWidget):    # 視窗右側磁碟清單
 
     signal_Update_LabelMsg = None
     signal_LoadSearchPath = QtCore.pyqtSignal()
     signal_Update_Disk_Files = None
+
+    disks_info = {}
 
     def __init__(self, row, col):
         super().__init__(row, col)
@@ -156,12 +190,29 @@ class TblWidget(QtWidgets.QTableWidget):
     @QtCore.pyqtSlot()
     def fnUpdateDiskConnectionStatus(self):
         for idx in range(self.rowCount()):
-            item = QtCore.QStorageInfo(self.item(idx, 1).text())
-            if not(item.isValid() and item.isReady()):
+            scan_path = self.item(idx, 1).text()
+            label = self.item(idx, 0).text()
+            disk = QtCore.QStorageInfo(scan_path)
+
+            if not(disk.isValid() and disk.isReady()):
                 self.item(idx, 0).setForeground(QtGui.QBrush(QtCore.Qt.darkRed))
                 self.item(idx, 1).setForeground(QtGui.QBrush(QtCore.Qt.black))
             else:
                 self.item(idx, 1).setForeground(QtGui.QBrush(QtCore.Qt.gray))
+                self.disks_info[label][1] = json.dumps([QtCore.QStorageInfo(scan_path).bytesAvailable(),
+                                                        QtCore.QStorageInfo(scan_path).bytesTotal()])
+                self.item(idx, 3).setText(self.disks_info[label][1])    # volume space
+
+                if not self.parent().cm1.flag_Busy:
+
+                    cur = self.conn.cursor()
+                    if len(cur.execute("SELECT * FROM disk WHERE label = ?", [label]).fetchall()) > 0:
+                        cur.execute("UPDATE disk SET space_available = ? WHERE label = ?",
+                                    [json.dumps(
+                                        [QtCore.QStorageInfo(scan_path).bytesAvailable(),
+                                         QtCore.QStorageInfo(scan_path).bytesTotal()]), label])
+                    self.conn.commit()
+
 
     @QtCore.pyqtSlot()
     def fnLoadSearchPath(self):
@@ -177,12 +228,14 @@ class TblWidget(QtWidgets.QTableWidget):
         for row in cur.execute("SELECT * FROM disk ORDER BY disk_id"):
             self.insertRow(self.rowCount())
             #print(row)
+            disk_path = QtWidgets.QTableWidgetItem(row[2], 0).text()
             try:
+                self.disks_info[row[1]] = [row[2], row[3], row[4]]    # [path, volume space, check date]
                 self.setItem(idx, 2, QtWidgets.QTableWidgetItem(str(row[0]), 0))    # disk_id (integral)
                 self.setItem(idx, 0, QtWidgets.QTableWidgetItem(row[1], 0))         # label
                 self.setItem(idx, 1, QtWidgets.QTableWidgetItem(row[2], 0))         # path
-                if not (QtCore.QStorageInfo(QtWidgets.QTableWidgetItem(row[2], 0).text()).isValid() and
-                        QtCore.QStorageInfo(QtWidgets.QTableWidgetItem(row[2], 0).text()).isReady()):
+                if not (QtCore.QStorageInfo(disk_path).isValid() and
+                        QtCore.QStorageInfo(disk_path).isReady()):
                     self.item(idx, 1).setForeground(QtGui.QBrush(QtCore.Qt.gray))
                 self.setItem(idx, 3, QtWidgets.QTableWidgetItem(row[3], 0))         # volume space
                 self.setItem(idx, 4, QtWidgets.QTableWidgetItem(row[4], 0))         # check date
@@ -246,8 +299,11 @@ class TblWidget(QtWidgets.QTableWidget):
             currentitem.setText(QtCore.QDir().fromNativeSeparators(currentitem.text()))
 
     def cellclicked(self, row, column):
+        import ast
         self.selectRow(row)
-        self.label_msg = self.item(row, 0).text() + ' - ' + self.item(row, 3).text() + '@' + self.item(row, 4).text()
+        # 磁碟資訊存放在隱藏的 cell
+        disk_volume_info = ast.literal_eval(self.item(row, 3).text())
+        self.label_msg = self.item(row, 0).text() + ' ' + GetHumanReadable(int(disk_volume_info[0])) + " / "  + GetHumanReadable(int(disk_volume_info[1])) + '@' + self.item(row, 4).text()
         self.signal_Update_LabelMsg.emit(self.label_msg)
 
     def celldoubleclicked(self, row, column):
@@ -267,6 +323,7 @@ class TblWidget(QtWidgets.QTableWidget):
 
 class MessageLabel(QtWidgets.QLabel):
     signal_MessageLabel_Busy = QtCore.pyqtSignal(bool)
+
     def __init__(self):
         super().__init__()
         self.timer = QtCore.QTimer()
@@ -289,32 +346,10 @@ class MessageLabel(QtWidgets.QLabel):
 
 
 class Ui_Form(QtCore.QObject):
+
     def setupUi(self, Form):
         Form.setObjectName("Form")
         Form.setMinimumSize(600, 400)
-
-
-        cssStyle = """
-                QWidget {
-                    font-size:16px;
-                    color: #aaa;
-                    border: 2px solid; 
-                    border-width:1px; 
-                    border-style: solid;
-                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #222, stop: 1 #333);
-                    min-height:24px; 
-                }
-                QHeaderView::section {
-                    background-color: #000000;
-                }
-                QTableView {
-                    border-radius:8px;
-                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #222, stop: 1 #333);
-                }
-                QTableView::item:selected {
-                    background-color: #555555;
-                }
-                """
 
         path = os.path.join(os.path.dirname(sys.modules[__name__].__file__), 'Files-icon.png')
 
@@ -329,6 +364,7 @@ class Ui_Form(QtCore.QObject):
         self.btnSearch = QtWidgets.QPushButton()
         self.btnSearch.setObjectName("btnSearch")
         self.btnSearch.setStyleSheet(cssStyle)
+        self.btnSearch.setText("搜尋")
 
         self.strKeyWord = QtWidgets.QLineEdit()
         self.strKeyWord.setObjectName("revPath")
@@ -337,6 +373,13 @@ class Ui_Form(QtCore.QObject):
         self.btnSave = QtWidgets.QPushButton()
         self.btnSave.setObjectName("btnSave")
         self.btnSave.setStyleSheet(cssStyle)
+        self.btnSave.setText("更新")
+
+        self.btnDisksInfo = QtWidgets.QPushButton()
+        self.btnDisksInfo.setObjectName("btnDisksInfo")
+        self.btnDisksInfo.setStyleSheet(cssStyle)
+        self.btnDisksInfo.setText("硬碟")
+
         self.treeView = tree.TreeView()
         self.treeView.setObjectName("treeView")
         self.treeView.setStyleSheet(cssStyle)
@@ -355,17 +398,16 @@ class Ui_Form(QtCore.QObject):
         self.labelMsg = MessageLabel()
         self.labelMsg.setStyleSheet(cssStyle)
 
-        self.gridLayout.addWidget(self.strKeyWord,  0,  0, 1, 16)
-        self.gridLayout.addWidget(self.btnSearch,   0, 16, 1, 2)
-        self.gridLayout.addWidget(self.btnSave,     0, 18, 1, 2)
+        self.gridLayout.addWidget(self.strKeyWord,  0,  0, 1, 14)
+        self.gridLayout.addWidget(self.btnSearch,   0, 14, 1, 2)
+        self.gridLayout.addWidget(self.btnSave,     0, 16, 1, 2)
+        self.gridLayout.addWidget(self.btnDisksInfo, 0, 18, 1, 2)
         self.gridLayout.addWidget(self.treeView,    1,  0, 28, 15)
         self.gridLayout.addWidget(self.tableWidget, 1, 15, 29, 5)
         self.gridLayout.addWidget(self.labelMsg,    29,  0, 1, 15)
 
         self.gridLayoutWidget.setLayout(self.gridLayout)
         Form.setWindowTitle("目錄檔案資料庫")
-        self.btnSearch.setText("搜尋")
-        self.btnSave.setText("更新")
 
         self.strKeyWord.returnPressed.connect(self.btnSearch.click)
 
@@ -382,6 +424,8 @@ class CoreMachine(QtCore.QObject):
     signal_Update_LabelMsg = None
     signal_LoadSearchPath = None
     flag_Busy = False
+
+    entire_path_set = None    # 供外部存放磁碟的對應路徑
 
     def __init__(self, conn):
         super().__init__()
@@ -410,13 +454,16 @@ class CoreMachine(QtCore.QObject):
         with self.lock:
             self.entire_path_set = pathset
 
+    def space_available(self, scan_path):
+        return QtCore.QStorageInfo(scan_path).bytesAvailable(), QtCore.QStorageInfo(scan_path).bytesTotal()
+
     @QtCore.pyqtSlot(str)
     def job_finished(self, msg):
         self.signal_Update_LabelMsg.emit(msg)
         QtWidgets.QApplication.processEvents()
 
     @QtCore.pyqtSlot(list)
-    def scan_disk(self, path_set):
+    def scan_disk(self, disk_labels):
         self.flag_Busy = True
         self.signal_MessageLabel_Busy.emit(True)
         print("scan_disk @ {}".format(QtCore.QThread.currentThread().objectName()))
@@ -430,9 +477,13 @@ class CoreMachine(QtCore.QObject):
         thread_sqlcmdexecutor = threading.Thread(target=sql_cmd_executor.wait)
         thread_sqlcmdexecutor.start()
 
-        for job in path_set:
-            threads.append(threading.Thread(target=scan_directory, kwargs={"semaphore": semaphore, "sql_cmd_queue": sql_cmd_queue,
-                                                                           "label": job, "signal_JobFinished": self.signal_JobFinished}))
+        for disk_label in disk_labels:
+            disk_path = self.entire_path_set[disk_label]
+            threads.append(threading.Thread(target=scan_directory, kwargs={"semaphore": semaphore,
+                                                                           "sql_cmd_queue": sql_cmd_queue,
+                                                                           "label": disk_label,
+                                                                           "path": disk_path,
+                                                                           "signal_JobFinished": self.signal_JobFinished}))
             threads[-1].start()
 
         for th in threads:
@@ -447,10 +498,12 @@ class CoreMachine(QtCore.QObject):
         QtWidgets.QApplication.processEvents()
         thread_sqlcmdexecutor.join()
 
-        conn = sqlite3.connect('C://Users//brt//Desktop//files.db')
+        conn = sqlite3.connect(db_location)
+        print(conn)
         cur = conn.cursor()
-        cur.execute('VACUUM files')
+        cur.execute('VACUUM')
         conn.commit()
+        conn.close()
 
         QtWidgets.QApplication.restoreOverrideCursor()
         self.flag_Busy = False
@@ -468,21 +521,21 @@ class searchWidget(QtWidgets.QWidget):
 
     def __init__(self, parent: QtWidgets.QApplication):
         super().__init__()
-        self.settings = QtCore.QSettings("candy", "brt")
-        self.conn = sqlite3.connect('C://Users//brt//Desktop//files.db')
+        self.settings = QtCore.QSettings("settings.ini", QtCore.QSettings.IniFormat)
+        self.conn = sqlite3.connect(db_location)
 
-        #self.treemodel = QtGui.QStandardItemModel()
+        # self.treemodel = QtGui.QStandardItemModel()
         self.treemodel = tree.TreeModel(conn=self.conn)
 
         self.parent = parent
         self.ui = Ui_Form()
         self.ui.setupUi(self)
-        #self.settings = parent.settings
+        # self.settings = parent.settings
         self.ui.treeView.setModel(self.treemodel)
         self.ui.treeView.signal_Searching = self.signal_Searching
         self.threadPool = []
 
-        #載入預設搜尋點
+        # 載入預設搜尋點
         self.ui.tableWidget.conn = self.conn
         self.ui.tableWidget.fnLoadSearchPath()
 
@@ -505,13 +558,47 @@ class searchWidget(QtWidgets.QWidget):
         self.ui.tableWidget.signal_Update_Disk_Files = self.cm1.signal_Update_Disk_Files
         self.ui.tableWidget.signal_connect()
 
+        self.qwebview = QtWebEngineWidgets.QWebEngineView()
+
         self.signal_Update_LabelMsg.connect(self.update_labelmsg)
         self.signal_Searching.connect(self.fnSearching)
         self.ui.btnSave.clicked.connect(self.fnUpdating)
         self.ui.btnSearch.clicked.connect(self.fnSearching)
+        self.ui.btnDisksInfo.clicked.connect(self.showDiskInfo)
         self.ui.treeView.doubleClicked.connect(self.treedbclick)
         self.ui.treeView.signal_item_clicked.connect(lambda idx: self.update_labelmsg(
             GetHumanReadable(self.treemodel.itemFromIndex(idx).file_size)))
+
+    @QtCore.pyqtSlot()    # 磁碟空間統計資料
+    def showDiskInfo(self):
+        self.qwebview.setWindowTitle('磁碟空間統計資料')
+        self.qwebview.setStyleSheet(cssStyle)
+        data = [['Disk', 'Free', 'Total']]
+        for disk in self.fnDisksList():
+            print(self.ui.tableWidget.disks_info[disk[0]])
+            try:
+                diskspaceinfo_bytes = json.loads(self.ui.tableWidget.disks_info[disk[0]][1])
+
+                if type(diskspaceinfo_bytes) == list:
+                    data.append([disk[0], diskspaceinfo_bytes[0], diskspaceinfo_bytes[1]])
+                else:
+                    continue
+            except (TypeError, json.JSONDecodeError) as e:
+                print(e)
+                continue
+        print(data)
+        rawdata = json.dumps(data)
+
+        env = Environment(loader=PackageLoader('mediaman', 'templates'))
+        tmp = tempfile.mkstemp(suffix=".htm", prefix='output')  # [file_handle, filepathname]
+        template = env.get_template('disk_quota.htm')
+
+        with open(tmp[1], 'w+', encoding='utf-8') as f:
+            f.write(template.render(rawdata=rawdata))
+
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(tmp[1]))
+
+        self.fnDisksList()
 
     @QtCore.pyqtSlot(str)
     def update_labelmsg(self, msg):
@@ -568,10 +655,10 @@ class searchWidget(QtWidgets.QWidget):
 
     def fnUpdating(self):  # 更新目錄資料庫的檔案名稱資料
         drive = []
-        entire_disk_path = []
+        entire_disk_path = {}
 
         for idx in range(self.ui.tableWidget.rowCount()):
-            entire_disk_path.append(self.ui.tableWidget.item(idx, 1).text())
+            entire_disk_path[self.ui.tableWidget.item(idx, 0).text()] = self.ui.tableWidget.item(idx, 1).text()
 
         self.cm1.entire_path_set = entire_disk_path
 
@@ -595,8 +682,18 @@ class searchWidget(QtWidgets.QWidget):
         QtGui.QDesktopServices.openUrl(
             QtCore.QUrl().fromLocalFile(self.ui.treeView.model().itemFromIndex(idx).qfileinfo.absolutePath()))
 
-    def closeEvent(self, QMoveEvent):
-        super(searchWidget, self).closeEvent(QMoveEvent)    #寫入需要儲存的參數
+    def fnDisksList(self):
+
+        disks = []
+        for idx in range(self.ui.tableWidget.rowCount()):
+            disk_path = self.ui.tableWidget.item(idx, 1).text()
+            disk_label = self.ui.tableWidget.item(idx, 0).text()
+            disks.append([disk_label, disk_path, ])
+
+        return disks
+
+    def closeEvent(self, q_move_event):
+        super(searchWidget, self).closeEvent(q_move_event)    #寫入需要儲存的參數
         self.settings.setValue("search-win-pos", self.pos())
         self.settings.sync()
         self.deleteLater()                                                #多個視窗 避免退出錯誤
@@ -611,6 +708,7 @@ def main():
     widget.show()
 
     sys.exit(app.exec_())
+
 
 if __name__ == '__main__':
     main()

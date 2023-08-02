@@ -1,0 +1,8 @@
+*.pyc
+Qt Style Sheets Examples _ Qt Widgets 5.8*
+.idea/
+ffmpeg/
+QT*/
+build/
+dist/
+venv/
