@@ -52,6 +52,8 @@ class TorrentWidget(QtWidgets.QWidget):
     signal_refresh = None
     signal_Searching_Keyword = None
     result: queue = None
+    page = None
+    keyword = None
 
     def __init__(self, parent: QtWidgets.QApplication, result: queue, signal_refresh: QtCore.pyqtSignal,
                  signal_searching_keyword: QtCore.pyqtSignal, **kwargs):
@@ -108,16 +110,23 @@ class TorrentWidget(QtWidgets.QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.verticalHeader().setStyleSheet(style)
         self.showMaximized()
+        self.page = 1
+        self.keyword = ''
 
     def signal_connect(self):
         self.signal_refresh.connect(self.on_refresh_tableview)
         self.table.pressed.connect(lambda index: self.on_table_pressed(index=index))
-        self.lineeditor.returnPressed.connect(self.on_line_editor_return_press)
+        self.lineeditor.returnPressed.connect(lambda: self.on_lineeditor_ReturnPressed())
         self.signal_update_window_title.connect(lambda msg: self.status_label.setText(msg))
         self.table.doubleClicked.connect(lambda index: self.on_table_double_click(index))
         self.btn_nextpage.clicked.connect(lambda: self.on_change_page('next'))
         self.btn_prevpage.clicked.connect(lambda: self.on_change_page('prev'))
         self.signal_update_window_title.connect(lambda msg: self.setWindowTitle('Torrent Browser Page[' + msg + ']'))
+
+    def on_lineeditor_ReturnPressed(self):
+        self.page = 1
+        self.keyword = self.lineeditor.text()
+        self.signal_searching_keyword.emit(self.keyword, self.page)
 
     def keyPressEvent(self, QKeyEvent):
         if QKeyEvent.key() == QtCore.Qt.Key_Escape:
